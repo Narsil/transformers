@@ -388,6 +388,24 @@ class MonoColumnInputTestCase(unittest.TestCase):
                 invalid_inputs,
             )
 
+    @require_torch
+    def test_torch_translation_default(self):
+        model_name, _ = TRANSLATION_FINETUNED_MODELS[0]
+        task = "translation"  # This should default to first available translation pair
+        nlp = pipeline(task=task, model=model_name, tokenizer=model_name)
+
+        # Defaults to first available pair
+        self.assertEqual(nlp.task, "translation_en_to_de")
+        # Config gets correctly overridden
+        self.assertEqual(nlp.model.config.prefix, "translate English to German: ")
+
+    @require_torch
+    def test_torch_translation_on_non_translation_model(self):
+        model_name = NER_FINETUNED_MODELS[0]
+        task = "translation"
+        with self.assertRaises(ValueError):
+            pipeline(task=task, model=model_name, tokenizer=model_name)
+
     @require_tf
     @slow
     def test_tf_translation(self):

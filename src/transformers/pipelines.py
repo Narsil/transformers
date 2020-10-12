@@ -1983,7 +1983,7 @@ class TranslationPipeline(Pipeline):
     Translates from one language to another.
 
     This translation pipeline can currently be loaded from :func:`~transformers.pipeline` using the following
-    task identifier: :obj:`"translation_xx_to_yy"`.
+    task identifier: :obj:`"translation_xx_to_yy"` or :obj:`"translation"` (which will default to the first available language pair).
 
     The models that this pipeline can use are models that have been fine-tuned on a translation task.
     See the up-to-date list of available models on
@@ -2548,6 +2548,12 @@ SUPPORTED_TASKS = {
         "pt": AutoModelForSeq2SeqLM if is_torch_available() else None,
         "default": {"model": {"pt": "sshleifer/distilbart-cnn-12-6", "tf": "t5-small"}},
     },
+    "translation": {
+        "impl": TranslationPipeline,
+        "tf": TFAutoModelWithLMHead if is_tf_available() else None,
+        "pt": AutoModelForSeq2SeqLM if is_torch_available() else None,
+        "default": {"model": {"pt": "t5-base", "tf": "t5-base"}},
+    },
     "translation_en_to_fr": {
         "impl": TranslationPipeline,
         "tf": TFAutoModelWithLMHead if is_tf_available() else None,
@@ -2624,6 +2630,7 @@ def pipeline(
             - :obj:`"question-answering"`: will return a :class:`~transformers.QuestionAnsweringPipeline`.
             - :obj:`"fill-mask"`: will return a :class:`~transformers.FillMaskPipeline`.
             - :obj:`"summarization"`: will return a :class:`~transformers.SummarizationPipeline`.
+            - :obj:`"translation"`: will return a :class:`~transformers.TranslationPipeline` (will default to first available language pair).
             - :obj:`"translation_xx_to_yy"`: will return a :class:`~transformers.TranslationPipeline`.
             - :obj:`"text-generation"`: will return a :class:`~transformers.TextGenerationPipeline`.
             - :obj:`"conversation"`: will return a :class:`~transformers.ConversationalPipeline`.
@@ -2740,5 +2747,15 @@ def pipeline(
                 "Trying to load the model with Tensorflow."
             )
         model = model_class.from_pretrained(model, config=config, **model_kwargs)
+
+    # Try to overspecify the translation task if available so that
+    # correct arguments get instantiated in the pipeline.
+    if task == "translation":
+        task_specific_params = model.config.task_specific_params
+        if task_specific_params is not None:
+            for key in task_specific_params:
+                if key.startswith("translation"):
+                    task = key
+                    break
 
     return task_class(model=model, tokenizer=tokenizer, modelcard=modelcard, framework=framework, task=task, **kwargs)
