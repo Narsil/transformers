@@ -100,7 +100,7 @@ class SummarizationPipeline(Pipeline):
             )
 
         with self.device_placement():
-            inputs = self._parse_and_tokenize(*documents, padding=padding)
+            inputs = self._parse_and_tokenize(*documents, padding=padding, **generate_kwargs)
 
             if self.framework == "pt":
                 inputs = self.ensure_tensor_on_device(**inputs)
@@ -123,6 +123,9 @@ class SummarizationPipeline(Pipeline):
                         max_length, input_length
                     )
                 )
+
+            # Args can be used by _parse_and_tokenize
+            generate_kwargs.pop("truncation", None)
 
             summaries = self.model.generate(
                 inputs["input_ids"],
@@ -217,7 +220,7 @@ class TranslationPipeline(Pipeline):
             )
 
         with self.device_placement():
-            inputs = self._parse_and_tokenize(*args, padding=padding)
+            inputs = self._parse_and_tokenize(*args, padding=padding, **generate_kwargs)
 
             if self.framework == "pt":
                 inputs = self.ensure_tensor_on_device(**inputs)
@@ -324,7 +327,7 @@ class Text2TextGenerationPipeline(Pipeline):
             )
 
         with self.device_placement():
-            inputs = self._parse_and_tokenize(*args, padding=padding)
+            inputs = self._parse_and_tokenize(*args, padding=padding, **generate_kwargs)
 
             if self.framework == "pt":
                 inputs = self.ensure_tensor_on_device(**inputs)
