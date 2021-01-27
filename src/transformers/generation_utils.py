@@ -15,6 +15,7 @@
 # limitations under the License.
 
 import warnings
+import datetime
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -995,6 +996,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                max_time=max_time,
                 **model_kwargs,
             )
 
@@ -1023,6 +1025,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                max_time=max_time,
                 **model_kwargs,
             )
 
@@ -1060,6 +1063,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                max_time=max_time,
                 **model_kwargs,
             )
 
@@ -1100,6 +1104,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                max_time=max_time,
                 **model_kwargs,
             )
 
@@ -1142,6 +1147,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 synced_gpus=synced_gpus,
+                max_time=max_time,
                 **model_kwargs,
             )
 
@@ -1235,6 +1241,8 @@ class GenerationMixin:
 
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
+        if max_time is not None:
+            start = datetime.datetime.now()
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
@@ -1384,6 +1392,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = None,
+        max_time: Optional[float] = None,
         **model_kwargs,
     ) -> Union[SampleOutput, torch.LongTensor]:
         r"""
@@ -1424,6 +1433,9 @@ class GenerationMixin:
                 Whether or not to return a :class:`~transformers.file_utils.ModelOutput` instead of a plain tuple.
             synced_gpus (:obj:`bool`, `optional`, defaults to :obj:`False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            max_time(:obj:`float`, `optional`, defaults to None):
+                The maximum amount of time you allow the computation to run for in seconds. generation will still
+                finish the current pass after allocated time has been passed.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the :obj:`forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include :obj:`encoder_outputs`.
@@ -1471,6 +1483,8 @@ class GenerationMixin:
 
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
+        if max_time is not None:
+            start = datetime.datetime.now()
 
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
@@ -1625,6 +1639,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = None,
+        max_time: Optional[float] = None,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""
@@ -1665,6 +1680,9 @@ class GenerationMixin:
                 Whether or not to return a :class:`~transformers.file_utils.ModelOutput` instead of a plain tuple.
             synced_gpus (:obj:`bool`, `optional`, defaults to :obj:`False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
+            max_time(:obj:`float`, `optional`, defaults to None):
+                The maximum amount of time you allow the computation to run for in seconds. generation will still
+                finish the current pass after allocated time has been passed.
             model_kwargs:
                 Additional model specific kwargs will be forwarded to the :obj:`forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include :obj:`encoder_outputs`.
@@ -1919,6 +1937,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = None,
+        max_time: Optional[float] = None,
         **model_kwargs,
     ) -> Union[BeamSampleOutput, torch.LongTensor]:
         r"""
@@ -2222,6 +2241,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         synced_gpus: Optional[bool] = None,
+        max_time: Optional[float] = None,
         **model_kwargs,
     ):
         r"""
@@ -2262,7 +2282,9 @@ class GenerationMixin:
                 Whether or not to return a :class:`~transformers.file_utils.ModelOutput` instead of a plain tuple.
             synced_gpus (:obj:`bool`, `optional`, defaults to :obj:`False`):
                 Whether to continue running the while loop until max_length (needed for ZeRO stage 3)
-
+            max_time(:obj:`float`, `optional`, defaults to None):
+                The maximum amount of time you allow the computation to run for in seconds. generation will still
+                finish the current pass after allocated time has been passed.
             model_kwargs:
                 Additional model specific kwargs that will be forwarded to the :obj:`forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include :obj:`encoder_outputs`.

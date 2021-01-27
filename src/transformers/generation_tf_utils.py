@@ -16,6 +16,7 @@
 
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
+import datetime
 
 import numpy as np
 import tensorflow as tf
@@ -374,6 +375,7 @@ class TFGenerationMixin:
         num_return_sequences=None,
         attention_mask=None,
         decoder_start_token_id=None,
+        max_time=None,
         use_cache=None,
         output_scores=None,
         output_attentions=None,
@@ -449,6 +451,9 @@ class TFGenerationMixin:
                 `What are attention masks? <../glossary.html#attention-mask>`__
             decoder_start_token_id (:obj:`int`, `optional`):
                 If an encoder-decoder model starts decoding with a different token than `bos`, the id of that token.
+            max_time(:obj:`float`, `optional`, defaults to None):
+                The maximum amount of time you allow the computation to run for in seconds. generation will still
+                finish the current pass after allocated time has been passed.
             use_cache: (:obj:`bool`, `optional`, defaults to :obj:`True`):
                 Whether or not the model should use the past last key/values attentions (if applicable to the model) to
                 speed up decoding.
@@ -755,6 +760,7 @@ class TFGenerationMixin:
                 vocab_size=vocab_size,
                 encoder_outputs=encoder_outputs,
                 attention_mask=attention_mask,
+                max_time=max_time,
                 use_cache=use_cache,
                 forced_bos_token_id=forced_bos_token_id,
                 forced_eos_token_id=forced_eos_token_id,
@@ -780,6 +786,7 @@ class TFGenerationMixin:
                 vocab_size=vocab_size,
                 encoder_outputs=encoder_outputs,
                 attention_mask=attention_mask,
+                max_time=max_time,
                 use_cache=use_cache,
                 return_dict_in_generate=return_dict_in_generate,
                 **model_kwargs,
@@ -806,6 +813,7 @@ class TFGenerationMixin:
         vocab_size,
         encoder_outputs,
         attention_mask,
+        max_time,
         use_cache,
         return_dict_in_generate,
         **kwargs
@@ -814,6 +822,8 @@ class TFGenerationMixin:
         Generate sequences for each example without beam search (num_beams == 1). All returned sequences are generated
         independently.
         """
+        if max_time is not None:
+            start = datetime.datetime.now()
 
         # length of generated sentences / unfinished sentences
         unfinished_sents = tf.ones_like(input_ids[:, 0])
@@ -962,6 +972,11 @@ class TFGenerationMixin:
             if tf.math.reduce_max(unfinished_sents) == 0:
                 break
 
+            if max_time is not None:
+                duration = (datetime.datetime.now() - start).total_seconds()
+                if duration > max_time:
+                    break
+
             # extend attention_mask for new generated input if only decoder
             if self.config.is_encoder_decoder is False:
                 attention_mask = tf.concat(
@@ -1051,6 +1066,7 @@ class TFGenerationMixin:
         vocab_size,
         encoder_outputs,
         attention_mask,
+        max_time,
         use_cache,
         forced_bos_token_id,
         forced_eos_token_id,
@@ -1058,6 +1074,8 @@ class TFGenerationMixin:
         **kwargs,
     ) -> Union[TFBeamSearchOutput, TFBeamSampleOutput, tf.Tensor]:
         """Generate sequences for each example with beam search."""
+        if max_time is not None:
+            start = datetime.datetime.now()
 
         # generated hypotheses
         generated_hyps = [
@@ -1296,6 +1314,11 @@ class TFGenerationMixin:
             # stop when we are done with each sentence
             if all(done):
                 break
+
+            if max_time is not None:
+                duration = (datetime.datetime.now() - start).total_seconds()
+                if duration > max_time:
+                    break
 
             # sanity check / prepare next batch
             assert len(next_batch_beam) == batch_size * num_beams
