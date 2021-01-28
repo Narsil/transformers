@@ -41,3 +41,18 @@ class TextGenerationPipelineTests(MonoInputPipelineCommonMixin, unittest.TestCas
         self.assertEqual(type(outputs[0][0]["generated_text"]), str)
         self.assertEqual(list(outputs[1][0].keys()), ["generated_text"])
         self.assertEqual(type(outputs[1][0]["generated_text"]), str)
+
+    def test_infinite_generation(self):
+        text_generator = pipeline(task="text-generation", model="gpt2")
+        with self.assertRaises(IndexError):
+            text_generator("This is a test " * 1024, max_new_tokens=10)
+        text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
+
+        # text_generator = pipeline(task="text-generation", model="gpt2", framework="tf")
+        # text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
+
+        text_generator = pipeline(task="text-generation", model="xlnet-base-cased", framework="pt")
+        text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
+
+        # text_generator = pipeline(task="text-generation", model="xlnet-base-cased", framework="tf")
+        # text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
