@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ..file_utils import add_end_docstrings
 from .base import PIPELINE_INIT_ARGS, Pipeline
 
@@ -69,6 +71,8 @@ class TextGenerationPipeline(Pipeline):
         return_full_text=None,
         clean_up_tokenization_spaces=False,
         prefix=None,
+        max_new_tokens: Optional[int] = None,
+        infinite_generation: bool = False,
         **generate_kwargs
     ):
         """
@@ -88,6 +92,12 @@ class TextGenerationPipeline(Pipeline):
                 Whether or not to clean up the potential extra spaces in the text output.
             prefix (:obj:`str`, `optional`):
                 Prefix added to prompt.
+            max_new_tokens (:obj:`int`, `optional`):
+                If set, this will set `max_length` in such a way that you will generate at most :obj:`max_new_tokens`.
+            infinite_generation (:obj:`bool`, `optional`, defaults to :obj:`False`):
+                Experimental flag, that allows the pipeline to generate more tokens
+                than the model can handle at will. It does so by trimming all tensors
+                to available size and changing :obj:`position_ids`.
             generate_kwargs:
                 Additional keyword arguments to pass along to the generate method of the model (see the generate method
                 corresponding to your framework `here <./model.html#generative-models>`__).
@@ -101,6 +111,32 @@ class TextGenerationPipeline(Pipeline):
         """
         prefix = prefix if prefix is not None else self.model.config.prefix
         return_full_text = return_full_text if return_full_text is not None else self.return_full_text
+        if infinite_generation:
+            real_prepare_inputs_for_generation = self.model.prepare_inputs_for_generation
+            n_positions = self.model.config.n_positions
+
+            def prepare_inputs_for_generation(*args, **kwargs):
+                inputs = real_prepare_inputs_for_generation(*args, **kwargs)
+
+                past_key_values = inputs.get("past_key_values", None)
+                attention_mask = inputs.get("attention_mask", None)
+                position_ids = inputs.get("position_ids", None)
+                if past_key_values is not None and attention_mask is not None:
+                    past_key_values = tuple(
+                        [tuple([key[:, :, -n_positions + 1 :] for key in p]) for p in past_key_values]
+                    )
+                    attention_mask = attention_mask[:, -n_positions:]
+                    if position_ids is not None:
+                        if self.framework == "pt":
+                            import torch
+
+                            position_ids = torch.clamp(position_ids, max=n_positions - 1)
+                        inputs["position_ids"] = position_ids
+                    inputs["past_key_values"] = past_key_values
+                    inputs["attention_mask"] = attention_mask
+                return inputs
+
+            self.model.prepare_inputs_for_generation = prepare_inputs_for_generation
 
         if isinstance(text_inputs, str):
             text_inputs = [text_inputs]
@@ -128,6 +164,12 @@ class TextGenerationPipeline(Pipeline):
 
                 prefix = prefix or ""
                 inputs = self._parse_and_tokenize(prefix + prompt_text, padding=False, add_special_tokens=False)
+
+                if inputs["input_ids"].shape[-1] > self.tokenizer.model_max_length:
+                    inputs["input_ids"] = inputs["input_ids"][:, -self.model.config.n_positions :]
+
+                if max_new_tokens is not None:
+                    generate_kwargs["max_length"] = inputs["input_ids"].shape[-1] + max_new_tokens
 
                 # set input_ids to None to allow empty prompt
                 if inputs["input_ids"].shape[-1] == 0:

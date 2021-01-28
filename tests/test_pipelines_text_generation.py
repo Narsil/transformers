@@ -60,3 +60,19 @@ class TextGenerationPipelineTests(MonoInputPipelineCommonMixin, unittest.TestCas
 
         outputs = text_generator("This is a test", return_full_text=True)
         self.assertIn("This is a test", outputs[0]["generated_text"])
+
+    @require_torch
+    def test_infinite_generation(self):
+        text_generator = pipeline(task="text-generation", model="gpt2")
+        with self.assertRaises(IndexError):
+            text_generator("This is a test " * 1024, max_new_tokens=10)
+        text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
+
+        # text_generator = pipeline(task="text-generation", model="gpt2", framework="tf")
+        # text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
+
+        text_generator = pipeline(task="text-generation", model="xlnet-base-cased", framework="pt")
+        text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
+
+        # text_generator = pipeline(task="text-generation", model="xlnet-base-cased", framework="tf")
+        # text_generator("This is a test " * 1024, max_new_tokens=10, infinite_generation=True)
