@@ -890,14 +890,14 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
                 token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
             past = tuple([tuple([key[:, :, -n_positions + 1 :] for key in p]) for p in past])
 
-        if input_ids is not None and input_ids.shape[-1] > n_positions:
+        if input_ids.shape[-1] > n_positions:
             logger.warning("Context is too long, clipping leftmost values")
-            input_ids = input_ids[:, -n_positions:]
+        input_ids = input_ids[:, -n_positions:]
 
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
 
-        if attention_mask is not None and attention_mask.shape[1] > n_positions:
+        if attention_mask is not None:
             attention_mask = attention_mask[:, -n_positions:]
 
         if attention_mask is not None and position_ids is None:
