@@ -620,6 +620,7 @@ class GenerationMixin:
         encoder_no_repeat_ngram_size: Optional[int] = None,
         num_return_sequences: Optional[int] = None,
         max_time: Optional[float] = None,
+        initial_time: Optional[float] = None,
         decoder_start_token_id: Optional[int] = None,
         use_cache: Optional[bool] = None,
         num_beam_groups: Optional[int] = None,
@@ -691,6 +692,8 @@ class GenerationMixin:
             max_time(:obj:`float`, `optional`, defaults to None):
                 The maximum amount of time you allow the computation to run for in seconds. generation will still
                 finish the current pass after allocated time has been passed.
+            initial_time(:obj:`float`, `optional`, defaults to None):
+                The start of time you allow the computation to run as unix timestamp.
             attention_mask (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`):
                 Mask to avoid performing attention on padding token indices. Mask values are in ``[0, 1]``, 1 for
                 tokens that are not masked, and 0 for masked tokens. If not provided, will default to a tensor the same
@@ -916,6 +919,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 max_time=max_time,
+                initial_time=initial_time,
                 **model_kwargs,
             )
 
@@ -944,6 +948,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 max_time=max_time,
+                initial_time=initial_time,
                 **model_kwargs,
             )
 
@@ -979,6 +984,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 max_time=max_time,
+                initial_time=initial_time,
                 **model_kwargs,
             )
 
@@ -997,6 +1003,7 @@ class GenerationMixin:
                 device=self.device,
                 length_penalty=length_penalty,
                 do_early_stopping=early_stopping,
+                initial_time=initial_time,
             )
 
             # interleave with `num_beams * num_return_sequences`
@@ -1018,6 +1025,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 max_time=max_time,
+                initial_time=initial_time,
                 **model_kwargs,
             )
 
@@ -1057,6 +1065,7 @@ class GenerationMixin:
                 output_scores=output_scores,
                 return_dict_in_generate=return_dict_in_generate,
                 max_time=max_time,
+                initial_time=initial_time,
                 **model_kwargs,
             )
 
@@ -1072,6 +1081,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         max_time: Optional[float] = None,
+        initial_time: Optional[float] = None,
         **model_kwargs,
     ) -> Union[GreedySearchOutput, torch.LongTensor]:
         r"""
@@ -1149,7 +1159,7 @@ class GenerationMixin:
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
         if max_time is not None:
-            start = datetime.datetime.now()
+            start = datetime.datetime.now() if initial_time is None else datetime.datetime.fromtimestamp(initial_time)
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         max_length = max_length if max_length is not None else self.config.max_length
@@ -1280,6 +1290,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         max_time: Optional[float] = None,
+        initial_time: Optional[float] = None,
         **model_kwargs,
     ) -> Union[SampleOutput, torch.LongTensor]:
         r"""
@@ -1365,7 +1376,7 @@ class GenerationMixin:
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
         if max_time is not None:
-            start = datetime.datetime.now()
+            start = datetime.datetime.now() if initial_time is None else datetime.datetime.fromtimestamp(initial_time)
 
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
@@ -1499,6 +1510,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         max_time: Optional[float] = None,
+        initial_time: Optional[float] = None,
         **model_kwargs,
     ) -> Union[BeamSearchOutput, torch.LongTensor]:
         r"""
@@ -1597,7 +1609,7 @@ class GenerationMixin:
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
         if max_time is not None:
-            start = datetime.datetime.now()
+            start = datetime.datetime.now() if initial_time is None else datetime.datetime.fromtimestamp(initial_time)
 
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
@@ -1759,6 +1771,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         max_time: Optional[float] = None,
+        initial_time: Optional[float] = None,
         **model_kwargs,
     ) -> Union[BeamSampleOutput, torch.LongTensor]:
         r"""
@@ -1865,7 +1878,7 @@ class GenerationMixin:
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
         if max_time is not None:
-            start = datetime.datetime.now()
+            start = datetime.datetime.now() if initial_time is None else datetime.datetime.fromtimestamp(initial_time)
 
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
@@ -2024,6 +2037,7 @@ class GenerationMixin:
         output_scores: Optional[bool] = None,
         return_dict_in_generate: Optional[bool] = None,
         max_time: Optional[float] = None,
+        initial_time: Optional[float] = None,
         **model_kwargs,
     ):
         r"""
@@ -2061,6 +2075,8 @@ class GenerationMixin:
             max_time(:obj:`float`, `optional`, defaults to None):
                 The maximum amount of time you allow the computation to run for in seconds. generation will still
                 finish the current pass after allocated time has been passed.
+            initial_time(:obj:`float`, `optional`, defaults to None):
+                The start of time you allow the computation to run as unix timestamp.
             model_kwargs:
                 Additional model specific kwargs that will be forwarded to the :obj:`forward` function of the model. If
                 model is an encoder-decoder model the kwargs should include :obj:`encoder_outputs`.
@@ -2125,7 +2141,7 @@ class GenerationMixin:
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
         if max_time is not None:
-            start = datetime.datetime.now()
+            start = datetime.datetime.now() if initial_time is None else datetime.datetime.fromtimestamp(initial_time)
 
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
