@@ -134,7 +134,7 @@ class Conversation:
         for user_input, generated_response in zip(self.past_user_inputs, self.generated_responses):
             yield True, user_input
             yield False, generated_response
-        if self.new_user_input:
+        if self.new_user_input is not None:
             yield True, self.new_user_input
 
     def __repr__(self):
