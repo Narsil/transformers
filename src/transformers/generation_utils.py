@@ -1089,7 +1089,6 @@ class GenerationMixin:
                 device=self.device,
                 length_penalty=length_penalty,
                 do_early_stopping=early_stopping,
-                initial_time=initial_time,
             )
 
             # interleave with `num_beams * num_return_sequences`
