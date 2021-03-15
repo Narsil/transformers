@@ -631,12 +631,13 @@ class GenerationMixin:
 
     def _get_stopping_criteria(
         self, max_length: Optional[int], max_time: Optional[float], max_new_tokens: Optional[int], start_length: int
+        initial_time: Optional[float],
     ) -> StoppingCriteriaList:
         stopping_criteria = StoppingCriteriaList()
         if max_length is not None:
             stopping_criteria.append(MaxLengthCriteria(max_length=max_length))
         if max_time is not None:
-            stopping_criteria.append(MaxTimeCriteria(max_time=max_time))
+            stopping_criteria.append(MaxTimeCriteria(max_time=max_time, initial_time=initial_time))
         if max_new_tokens is not None:
             stopping_criteria.append(MaxNewTokensCriteria(start_length=start_length, max_new_tokens=max_new_tokens))
         return stopping_criteria
@@ -978,9 +979,16 @@ class GenerationMixin:
             remove_invalid_values=remove_invalid_values,
         )
 
+<<<<<<< HEAD
         cur_len = input_ids.shape[-1]
         stopping_criteria = self._get_stopping_criteria(
             max_length=max_length, max_time=max_time, max_new_tokens=max_new_tokens, start_length=cur_len
+=======
+        stopping_criteria = self._get_stopping_criteria(
+            max_length=max_length,
+            max_time=max_time,
+            initial_time=initial_time,
+>>>>>>> Post rebase fixes.
         )
 
         if is_greedy_gen_mode:
@@ -1249,8 +1257,6 @@ class GenerationMixin:
 
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
-        if max_time is not None:
-            start = datetime.datetime.now() if initial_time is None else datetime.datetime.fromtimestamp(initial_time)
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         stopping_criteria = stopping_criteria if stopping_criteria is not None else StoppingCriteriaList()
@@ -1492,8 +1498,6 @@ class GenerationMixin:
 
             >>> print("Generated:", tokenizer.batch_decode(outputs, skip_special_tokens=True))
         """
-        if max_time is not None:
-            start = datetime.datetime.now() if initial_time is None else datetime.datetime.fromtimestamp(initial_time)
 
         # init values
         logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
