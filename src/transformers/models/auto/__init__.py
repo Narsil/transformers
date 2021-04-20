@@ -26,6 +26,7 @@ _import_structure = {
     "configuration_auto": ["ALL_PRETRAINED_CONFIG_ARCHIVE_MAP", "CONFIG_MAPPING", "MODEL_NAMES_MAPPING", "AutoConfig"],
     "feature_extraction_auto": ["FEATURE_EXTRACTOR_MAPPING", "AutoFeatureExtractor"],
     "tokenization_auto": ["TOKENIZER_MAPPING", "AutoTokenizer"],
+    "processor_auto": ["PROCESSOR_MAPPING", "AutoProcessor"],
 }
 
 if is_torch_available():

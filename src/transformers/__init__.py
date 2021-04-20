@@ -141,6 +141,7 @@ _import_structure = {
         "AutoConfig",
         "AutoFeatureExtractor",
         "AutoTokenizer",
+        "AutoProcessor",
     ],
     "models.bart": ["BartConfig", "BartTokenizer"],
     "models.barthez": [],
