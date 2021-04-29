@@ -637,7 +637,7 @@ class GenerationMixin:
         if max_length is not None:
             stopping_criteria.append(MaxLengthCriteria(max_length=max_length))
         if max_time is not None:
-            stopping_criteria.append(MaxTimeCriteria(max_time=max_time, initial_time=initial_time))
+            stopping_criteria.append(MaxTimeCriteria(max_time=max_time, initial_timestamp=initial_time))
         if max_new_tokens is not None:
             stopping_criteria.append(MaxNewTokensCriteria(start_length=start_length, max_new_tokens=max_new_tokens))
         return stopping_criteria
