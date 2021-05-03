@@ -44,6 +44,24 @@ class TextGenerationPipelineTests(MonoInputPipelineCommonMixin, unittest.TestCas
         self.assertEqual(type(outputs[1][0]["generated_text"]), str)
 
     @require_torch
+    def test_generation_end_sequence(self):
+        text_generator = pipeline(task="text-generation", model=self.small_models[0])
+        outputs = text_generator("This is a test")
+        text = outputs[0]["generated_text"]
+        # Segmental appears three times in this greedy search
+        self.assertEqual(text.count("segmental"), 3)
+
+        # Now eos at segmental
+        outputs = text_generator("This is a test", end_sequence="segmental")
+        text = outputs[0]["generated_text"]
+        self.assertEqual(text[-len("segmental") :], "segmental")
+        self.assertEqual(text.count("segmental"), 1)
+        with self.assertRaises(ValueError):
+            outputs = text_generator("This is a test", end_sequence="\n")
+
+        outputs = text_generator("This is a test", end_sequence="something unrelated")
+
+    @require_torch
     def test_generation_output_style(self):
         text_generator = pipeline(task="text-generation", model=self.small_models[0])
         # text-generation is non-deterministic by nature, we can't fully test the output

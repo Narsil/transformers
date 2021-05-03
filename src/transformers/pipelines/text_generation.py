@@ -1,7 +1,11 @@
+import logging
 from typing import Optional
 
 from ..file_utils import add_end_docstrings
 from .base import PIPELINE_INIT_ARGS, Pipeline
+
+
+logger = logging.getLogger(__name__)
 
 
 @add_end_docstrings(PIPELINE_INIT_ARGS)
@@ -73,6 +77,7 @@ class TextGenerationPipeline(Pipeline):
         clean_up_tokenization_spaces=False,
         prefix=None,
         max_new_tokens: Optional[int] = None,
+        end_sequence: Optional[str] = None,
         **generate_kwargs
     ):
         """
@@ -152,6 +157,20 @@ class TextGenerationPipeline(Pipeline):
                 assert (
                     input_ids is None or input_ids.shape[0] == 1
                 ), "Batch generation is currently not supported. See https://github.com/huggingface/transformers/issues/3021 for more information."
+
+                if end_sequence is not None:
+                    assert isinstance(end_sequence, str), "`end_sequence` should be a str."
+                    end_tokens = self.tokenizer(end_sequence)["input_ids"]
+                    if len(end_tokens) > 1:
+                        logger.warning(
+                            f"`end_sequence contains more tokens than expected. Taking last token {repr(self.tokenizer.decode(end_tokens[-1:]))} as EOS for now",
+                        )
+                    elif len(end_tokens) == 0:
+                        raise ValueError(
+                            f"`end_sequence`: {repr(end_sequence)} is invalid as it does not correspond to any tokens for tokenizer {self.tokenizer}"
+                        )
+                    eos_token_id = end_tokens[-1]
+                    generate_kwargs["eos_token_id"] = eos_token_id
 
                 output_sequences = self.model.generate(input_ids=input_ids, **generate_kwargs)  # BS x SL
 
