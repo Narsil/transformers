@@ -914,6 +914,7 @@ class GPTNeoForCausalLM(GPTNeoPreTrainedModel):
         self.lm_head = new_embeddings
 
     def prepare_inputs_for_generation(self, input_ids, past=None, **kwargs):
+        max_position_embeddings = self.config.max_position_embeddings
         token_type_ids = kwargs.get("token_type_ids", None)
         # only last token for inputs_ids if past is defined in kwargs
         if past:
@@ -921,8 +922,27 @@ class GPTNeoForCausalLM(GPTNeoPreTrainedModel):
             if token_type_ids is not None:
                 token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
 
+            past = tuple(
+                [
+                    tuple(
+                        [
+                            key[:, :, -max_position_embeddings + 1 :]
+                            if len(key.shape) == 4
+                            else key[:, -max_position_embeddings + 1 :]
+                            for key in p
+                        ]
+                    )
+                    for p in past
+                ]
+            )
+
+        input_ids = input_ids[:, -max_position_embeddings:]
+
         attention_mask = kwargs.get("attention_mask", None)
         position_ids = kwargs.get("position_ids", None)
+
+        if attention_mask is not None:
+            attention_mask = attention_mask[:, -max_position_embeddings:]
 
         if attention_mask is not None and position_ids is None:
             # create position_ids on the fly for batch generation
