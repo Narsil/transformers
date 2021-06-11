@@ -38,6 +38,7 @@ from ..blenderbot.tokenization_blenderbot import BlenderbotTokenizer
 from ..blenderbot_small.tokenization_blenderbot_small import BlenderbotSmallTokenizer
 from ..byt5.tokenization_byt5 import ByT5Tokenizer
 from ..canine.tokenization_canine import CanineTokenizer
+from ..clip.tokenization_clip import CLIPTokenizer
 from ..convbert.tokenization_convbert import ConvBertTokenizer
 from ..ctrl.tokenization_ctrl import CTRLTokenizer
 from ..deberta.tokenization_deberta import DebertaTokenizer
@@ -79,7 +80,11 @@ from .configuration_auto import (
     BlenderbotConfig,
     BlenderbotSmallConfig,
     CamembertConfig,
+<<<<<<< HEAD
     CanineConfig,
+=======
+    CLIPConfig,
+>>>>>>> [Proposal] Adding ZeroShotImageClassificationPipeline
     ConvBertConfig,
     CTRLConfig,
     DebertaConfig,
@@ -277,6 +282,7 @@ TOKENIZER_MAPPING = OrderedDict(
         (XLNetConfig, (XLNetTokenizer, XLNetTokenizerFast)),
         (FlaubertConfig, (FlaubertTokenizer, None)),
         (XLMConfig, (XLMTokenizer, None)),
+        (CLIPConfig, (CLIPTokenizer, None)),
         (CTRLConfig, (CTRLTokenizer, None)),
         (FSMTConfig, (FSMTTokenizer, None)),
         (BertGenerationConfig, (BertGenerationTokenizer, None)),
