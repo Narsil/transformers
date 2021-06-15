@@ -15,7 +15,6 @@
 # limitations under the License.
 
 import warnings
-import datetime
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -630,7 +629,11 @@ class GenerationMixin:
         return processors
 
     def _get_stopping_criteria(
-        self, max_length: Optional[int], max_time: Optional[float], max_new_tokens: Optional[int], start_length: int
+        self,
+        max_length: Optional[int],
+        max_time: Optional[float],
+        max_new_tokens: Optional[int],
+        start_length: int,
         initial_time: Optional[float],
     ) -> StoppingCriteriaList:
         stopping_criteria = StoppingCriteriaList()
@@ -979,16 +982,13 @@ class GenerationMixin:
             remove_invalid_values=remove_invalid_values,
         )
 
-<<<<<<< HEAD
         cur_len = input_ids.shape[-1]
-        stopping_criteria = self._get_stopping_criteria(
-            max_length=max_length, max_time=max_time, max_new_tokens=max_new_tokens, start_length=cur_len
-=======
         stopping_criteria = self._get_stopping_criteria(
             max_length=max_length,
             max_time=max_time,
+            max_new_tokens=max_new_tokens,
+            start_length=cur_len,
             initial_time=initial_time,
->>>>>>> Post rebase fixes.
         )
 
         if is_greedy_gen_mode:
