@@ -80,11 +80,8 @@ from .configuration_auto import (
     BlenderbotConfig,
     BlenderbotSmallConfig,
     CamembertConfig,
-<<<<<<< HEAD
     CanineConfig,
-=======
     CLIPConfig,
->>>>>>> [Proposal] Adding ZeroShotImageClassificationPipeline
     ConvBertConfig,
     CTRLConfig,
     DebertaConfig,
