@@ -15,9 +15,15 @@ import subprocess
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
+from torch.utils.data import Dataset
 
+from ..file_utils import is_torch_available
 from ..utils import logging
 from .base import Pipeline
+
+
+if is_torch_available():
+    import torch
 
 
 if TYPE_CHECKING:
@@ -62,6 +68,38 @@ def ffmpeg_read(bpayload: bytes, sampling_rate: int) -> np.array:
     return audio
 
 
+class PipelineDataset(Dataset):
+    def __init__(self, dataset, process):
+        self.dataset = dataset
+        self.process = process
+
+    def __len__(self):
+        return self.dataset.__len__()
+
+    def __getitem__(self, i):
+        item = self.dataset.__getitem__(i)
+        processed = self.process(item)
+        return processed
+
+
+class PipelineIterator:
+    def __init__(self, loader, infer):
+        self.loader = loader
+        self.infer = infer
+
+    def __len__(self):
+        return self.loader.__len__()
+
+    def __iter__(self):
+        self.loader = iter(self.loader)
+        return self
+
+    def __next__(self):
+        item = next(self.loader)
+        item = {k: v.squeeze(0) if isinstance(v, torch.Tensor) else v for k, v in item.items()}
+        return self.infer(item)
+
+
 class AutomaticSpeechRecognitionPipeline(Pipeline):
     """
     Pipeline that aims at extracting spoken text contained within some audio.
@@ -101,6 +139,35 @@ class AutomaticSpeechRecognitionPipeline(Pipeline):
         if self.framework == "tf":
             raise ValueError("The AutomaticSpeechRecognitionPipeline is only available in PyTorch.")
 
+    def iter(self, iterable):
+        from torch.utils.data import DataLoader
+
+        dataset = PipelineDataset(
+            iterable,
+            process=self.process,
+        )
+
+        loader = DataLoader(dataset, num_workers=8, batch_size=1)
+
+        return PipelineIterator(loader, self.infer)
+
+    def process(self, inputs):
+        # print("Inputs", inputs)
+        if isinstance(inputs, str):
+            with open(inputs, "rb") as f:
+                inputs = f.read()
+
+        if isinstance(inputs, bytes):
+            inputs = ffmpeg_read(inputs, self.feature_extractor.sampling_rate)
+
+        assert isinstance(inputs, np.ndarray), "We expect a numpy ndarray as input"
+        assert len(inputs.shape) == 1, "We expect a single channel audio input for AutomaticSpeechRecognitionPipeline"
+
+        processed = self.feature_extractor(
+            inputs, sampling_rate=self.feature_extractor.sampling_rate, return_tensors="pt"
+        )
+        return processed
+
     def __call__(
         self,
         inputs: Union[np.ndarray, bytes, str],
@@ -123,29 +190,21 @@ class AutomaticSpeechRecognitionPipeline(Pipeline):
 
             - **text** (:obj:`str`) -- The recognized text.
         """
-        if isinstance(inputs, str):
-            with open(inputs, "rb") as f:
-                inputs = f.read()
+        processed = self.process(inputs)
+        return self.infer(processed, **kwargs)
 
-        if isinstance(inputs, bytes):
-            inputs = ffmpeg_read(inputs, self.feature_extractor.sampling_rate)
-
-        assert isinstance(inputs, np.ndarray), "We expect a numpy ndarray as input"
-        assert len(inputs.shape) == 1, "We expect a single channel audio input for AutomaticSpeechRecognitionPipeline"
-
-        processed = self.feature_extractor(
-            inputs, sampling_rate=self.feature_extractor.sampling_rate, return_tensors="pt"
-        )
+    def infer(self, processed, **kwargs):
         processed = self.ensure_tensor_on_device(**processed)
 
         name = self.model.__class__.__name__
-        if name.endswith("ForConditionalGeneration"):
-            input_ids = processed["input_features"]
-            tokens = self.model.generate(input_ids=input_ids)
-            tokens = tokens.squeeze(0)
-        elif name.endswith("ForCTC"):
-            outputs = self.model(**processed)
-            tokens = outputs.logits.squeeze(0).argmax(dim=-1)
+        with torch.no_grad():
+            if name.endswith("ForConditionalGeneration"):
+                input_ids = processed["input_features"]
+                tokens = self.model.generate(input_ids=input_ids)
+                tokens = tokens.squeeze(0)
+            elif name.endswith("ForCTC"):
+                outputs = self.model(**processed)
+                tokens = outputs.logits.squeeze(0).argmax(dim=-1)
 
         skip_special_tokens = False if "CTC" in self.tokenizer.__class__.__name__ else True
         recognized_string = self.tokenizer.decode(tokens, skip_special_tokens=skip_special_tokens)
