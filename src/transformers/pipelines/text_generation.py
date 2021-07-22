@@ -2,6 +2,7 @@ import logging
 from typing import Optional
 
 from ..file_utils import add_end_docstrings
+from .automatic_speech_recognition import PipelineDataset, PipelineIterator
 from .base import PIPELINE_INIT_ARGS, Pipeline
 
 
@@ -68,6 +69,135 @@ class TextGenerationPipeline(Pipeline):
 
         return super()._parse_and_tokenize(*args, **kwargs)
 
+    def iter(self, iterable):
+        from torch.utils.data import DataLoader
+
+        dataset = PipelineDataset(
+            iterable,
+            process=self.process,
+        )
+
+        loader = DataLoader(dataset, num_workers=8, batch_size=1)
+
+        return PipelineIterator(loader, self.infer)
+
+    def process(
+        self,
+        prompt_text: str,
+        return_tensors=False,
+        return_text=True,
+        return_full_text=None,
+        clean_up_tokenization_spaces=False,
+        prefix=None,
+        max_new_tokens: Optional[int] = None,
+        end_sequence: Optional[str] = None,
+        **generate_kwargs
+    ):
+        if prefix is None and self.model.__class__.__name__ in [
+            "XLNetLMHeadModel",
+            "TransfoXLLMHeadModel",
+            "TFXLNetLMHeadModel",
+            "TFTransfoXLLMHeadModel",
+        ]:
+            # For XLNet and TransformerXL we add an article to the prompt to give more state to the model.
+            prefix = self.XL_PREFIX
+
+        if prefix:
+            prefix_inputs = self._parse_and_tokenize(prefix, padding=False, add_special_tokens=False)
+            # This impacts max_length and min_length argument that need adjusting.
+            prefix_length = prefix_inputs["input_ids"].shape[-1]
+            if generate_kwargs.get("max_length", None) is not None:
+                generate_kwargs["max_length"] += prefix_length
+            if generate_kwargs.get("min_length", None) is not None:
+                generate_kwargs["min_length"] += prefix_length
+
+        prefix = prefix or ""
+        inputs = self._parse_and_tokenize(prefix + prompt_text, padding=False, add_special_tokens=False)
+
+        if max_new_tokens is not None:
+            generate_kwargs["max_length"] = inputs["input_ids"].shape[-1] + max_new_tokens
+
+        # set input_ids to None to allow empty prompt
+        if inputs["input_ids"].shape[-1] == 0:
+            inputs["input_ids"] = None
+            inputs["attention_mask"] = None
+
+        input_ids = inputs["input_ids"]
+        # Ensure that batch size = 1 (batch generation not allowed for now)
+        assert (
+            input_ids is None or input_ids.shape[0] == 1
+        ), "Batch generation is currently not supported. See https://github.com/huggingface/transformers/issues/3021 for more information."
+
+        if end_sequence is not None:
+            assert isinstance(end_sequence, str), "`end_sequence` should be a str."
+            end_tokens = self.tokenizer(end_sequence)["input_ids"]
+            if len(end_tokens) > 1:
+                logger.warning(
+                    f"`end_sequence contains more tokens than expected. Taking last token {repr(self.tokenizer.decode(end_tokens[-1:]))} as EOS for now",
+                )
+            elif len(end_tokens) == 0:
+                raise ValueError(
+                    f"`end_sequence`: {repr(end_sequence)} is invalid as it does not correspond to any tokens for tokenizer {self.tokenizer}"
+                )
+            eos_token_id = end_tokens[-1]
+            generate_kwargs["eos_token_id"] = eos_token_id
+        return {"input_ids": input_ids, "prompt_text": prompt_text}
+
+    def infer(
+        self,
+        inputs,
+        return_tensors=False,
+        return_text=True,
+        return_full_text=True,
+        clean_up_tokenization_spaces=False,
+        prefix=None,
+        max_new_tokens: Optional[int] = None,
+        end_sequence: Optional[str] = None,
+        **generate_kwargs
+    ):
+        print("INPUTS", inputs)
+        inputs = self.ensure_tensor_on_device(**inputs)
+        input_ids = inputs["input_ids"]
+        prompt_text = inputs["prompt_text"]
+        output_sequences = self.model.generate(input_ids=input_ids, **generate_kwargs)  # BS x SL
+        result = []
+        for generated_sequence in output_sequences:
+            if self.framework == "pt" and generated_sequence is not None:
+                generated_sequence = generated_sequence.cpu()
+            generated_sequence = generated_sequence.numpy().tolist()
+            record = {}
+            if return_tensors:
+                record["generated_token_ids"] = generated_sequence
+            if return_text:
+                # Decode text
+                text = self.tokenizer.decode(
+                    generated_sequence,
+                    skip_special_tokens=True,
+                    clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                )
+
+                # Remove PADDING prompt of the sequence if XLNet or Transfo-XL model is used
+                if input_ids is None:
+                    prompt_length = 0
+                else:
+                    prompt_length = len(
+                        self.tokenizer.decode(
+                            input_ids[0],
+                            skip_special_tokens=True,
+                            clean_up_tokenization_spaces=clean_up_tokenization_spaces,
+                        )
+                    )
+
+                if return_full_text:
+                    all_text = prompt_text + text[prompt_length:]
+                else:
+                    all_text = text[prompt_length:]
+
+                record["generated_text"] = all_text
+
+            result.append(record)
+        return result
+
     def __call__(
         self,
         text_inputs,
@@ -119,98 +249,9 @@ class TextGenerationPipeline(Pipeline):
         for prompt_text in text_inputs:
             # Manage correct placement of the tensors
             with self.device_placement():
-                if prefix is None and self.model.__class__.__name__ in [
-                    "XLNetLMHeadModel",
-                    "TransfoXLLMHeadModel",
-                    "TFXLNetLMHeadModel",
-                    "TFTransfoXLLMHeadModel",
-                ]:
-                    # For XLNet and TransformerXL we add an article to the prompt to give more state to the model.
-                    prefix = self.XL_PREFIX
-
-                if prefix:
-                    prefix_inputs = self._parse_and_tokenize(prefix, padding=False, add_special_tokens=False)
-                    # This impacts max_length and min_length argument that need adjusting.
-                    prefix_length = prefix_inputs["input_ids"].shape[-1]
-                    if generate_kwargs.get("max_length", None) is not None:
-                        generate_kwargs["max_length"] += prefix_length
-                    if generate_kwargs.get("min_length", None) is not None:
-                        generate_kwargs["min_length"] += prefix_length
-
-                prefix = prefix or ""
-                inputs = self._parse_and_tokenize(prefix + prompt_text, padding=False, add_special_tokens=False)
-
-                if max_new_tokens is not None:
-                    generate_kwargs["max_length"] = inputs["input_ids"].shape[-1] + max_new_tokens
-
-                # set input_ids to None to allow empty prompt
-                if inputs["input_ids"].shape[-1] == 0:
-                    inputs["input_ids"] = None
-                    inputs["attention_mask"] = None
-
-                if self.framework == "pt" and inputs["input_ids"] is not None:
-                    inputs = self.ensure_tensor_on_device(**inputs)
-
-                input_ids = inputs["input_ids"]
-
-                # Ensure that batch size = 1 (batch generation not allowed for now)
-                assert (
-                    input_ids is None or input_ids.shape[0] == 1
-                ), "Batch generation is currently not supported. See https://github.com/huggingface/transformers/issues/3021 for more information."
-
-                if end_sequence is not None:
-                    assert isinstance(end_sequence, str), "`end_sequence` should be a str."
-                    end_tokens = self.tokenizer(end_sequence)["input_ids"]
-                    if len(end_tokens) > 1:
-                        logger.warning(
-                            f"`end_sequence contains more tokens than expected. Taking last token {repr(self.tokenizer.decode(end_tokens[-1:]))} as EOS for now",
-                        )
-                    elif len(end_tokens) == 0:
-                        raise ValueError(
-                            f"`end_sequence`: {repr(end_sequence)} is invalid as it does not correspond to any tokens for tokenizer {self.tokenizer}"
-                        )
-                    eos_token_id = end_tokens[-1]
-                    generate_kwargs["eos_token_id"] = eos_token_id
-
-                output_sequences = self.model.generate(input_ids=input_ids, **generate_kwargs)  # BS x SL
-
-            result = []
-            for generated_sequence in output_sequences:
-                if self.framework == "pt" and generated_sequence is not None:
-                    generated_sequence = generated_sequence.cpu()
-                generated_sequence = generated_sequence.numpy().tolist()
-                record = {}
-                if return_tensors:
-                    record["generated_token_ids"] = generated_sequence
-                if return_text:
-                    # Decode text
-                    text = self.tokenizer.decode(
-                        generated_sequence,
-                        skip_special_tokens=True,
-                        clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-                    )
-
-                    # Remove PADDING prompt of the sequence if XLNet or Transfo-XL model is used
-                    if input_ids is None:
-                        prompt_length = 0
-                    else:
-                        prompt_length = len(
-                            self.tokenizer.decode(
-                                input_ids[0],
-                                skip_special_tokens=True,
-                                clean_up_tokenization_spaces=clean_up_tokenization_spaces,
-                            )
-                        )
-
-                    if return_full_text:
-                        all_text = prompt_text + text[prompt_length:]
-                    else:
-                        all_text = text[prompt_length:]
-
-                    record["generated_text"] = all_text
-
-                result.append(record)
-            results += [result]
+                inputs = self.process(prompt_text)
+                result = self.infer(inputs=inputs, prompt_text=prompt_text)  # BS x SL
+                results.append(result)
 
         if len(results) == 1:
             return results[0]

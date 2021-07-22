@@ -15,7 +15,7 @@ import subprocess
 from typing import TYPE_CHECKING, Union
 
 import numpy as np
-from torch.utils.data import Dataset
+from torch.utils.data import IterableDataset
 
 from ..file_utils import is_torch_available
 from ..utils import logging
@@ -68,17 +68,26 @@ def ffmpeg_read(bpayload: bytes, sampling_rate: int) -> np.array:
     return audio
 
 
-class PipelineDataset(Dataset):
+class PipelineDataset(IterableDataset):
     def __init__(self, dataset, process):
         self.dataset = dataset
         self.process = process
 
-    def __len__(self):
-        return self.dataset.__len__()
+    def __iter__(self):
+        self.loader = iter(self.dataset)
+        return self
 
-    def __getitem__(self, i):
-        item = self.dataset.__getitem__(i)
-        processed = self.process(item)
+    def __next__(self):
+        item = next(self.dataset)
+        try:
+            processed = self.process(item)
+        except ValueError as e:
+            processed = {"error": str(e)}
+        except Exception as e:  # noqa: E722
+            print("ERROR", e)
+            processed = {"error": "Unknown error"}
+        except:  # noqa: E722
+            processed = {"error": "Unknown error"}
         return processed
 
 
@@ -87,16 +96,15 @@ class PipelineIterator:
         self.loader = loader
         self.infer = infer
 
-    def __len__(self):
-        return self.loader.__len__()
-
     def __iter__(self):
         self.loader = iter(self.loader)
         return self
 
     def __next__(self):
         item = next(self.loader)
-        item = {k: v.squeeze(0) if isinstance(v, torch.Tensor) else v for k, v in item.items()}
+        if isinstance(item, dict) and "error" in item:
+            return item
+        item = {k: v.squeeze(0) if isinstance(v, torch.Tensor) else v[0] for k, v in item.items()}
         return self.infer(item)
 
 
