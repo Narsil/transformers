@@ -83,8 +83,8 @@ class PipelineDataset(IterableDataset):
             processed = self.process(item)
         except ValueError as e:
             processed = {"error": str(e)}
-        except Exception as e:  # noqa: E722
-            print("ERROR", e)
+        except Exception as e:
+            logger.error(e)
             processed = {"error": "Unknown error"}
         except:  # noqa: E722
             processed = {"error": "Unknown error"}
@@ -160,7 +160,6 @@ class AutomaticSpeechRecognitionPipeline(Pipeline):
         return PipelineIterator(loader, self.infer)
 
     def process(self, inputs):
-        # print("Inputs", inputs)
         if isinstance(inputs, str):
             with open(inputs, "rb") as f:
                 inputs = f.read()

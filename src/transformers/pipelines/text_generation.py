@@ -77,13 +77,13 @@ class TextGenerationPipeline(Pipeline):
             process=self.process,
         )
 
-        loader = DataLoader(dataset, num_workers=8, batch_size=1)
+        loader = DataLoader(dataset, num_workers=2, batch_size=1)
 
         return PipelineIterator(loader, self.infer)
 
     def process(
         self,
-        prompt_text: str,
+        _inputs,
         return_tensors=False,
         return_text=True,
         return_full_text=None,
@@ -93,6 +93,7 @@ class TextGenerationPipeline(Pipeline):
         end_sequence: Optional[str] = None,
         **generate_kwargs
     ):
+        prompt_text = _inputs.pop("inputs")
         if prefix is None and self.model.__class__.__name__ in [
             "XLNetLMHeadModel",
             "TransfoXLLMHeadModel",
@@ -141,7 +142,7 @@ class TextGenerationPipeline(Pipeline):
                 )
             eos_token_id = end_tokens[-1]
             generate_kwargs["eos_token_id"] = eos_token_id
-        return {"input_ids": input_ids, "prompt_text": prompt_text}
+        return {"input_ids": input_ids, "prompt_text": prompt_text, **_inputs}
 
     def infer(
         self,
@@ -155,10 +156,9 @@ class TextGenerationPipeline(Pipeline):
         end_sequence: Optional[str] = None,
         **generate_kwargs
     ):
-        print("INPUTS", inputs)
         inputs = self.ensure_tensor_on_device(**inputs)
-        input_ids = inputs["input_ids"]
-        prompt_text = inputs["prompt_text"]
+        input_ids = inputs.pop("input_ids")
+        prompt_text = inputs.pop("prompt_text")
         output_sequences = self.model.generate(input_ids=input_ids, **generate_kwargs)  # BS x SL
         result = []
         for generated_sequence in output_sequences:
@@ -196,7 +196,7 @@ class TextGenerationPipeline(Pipeline):
                 record["generated_text"] = all_text
 
             result.append(record)
-        return result
+        return {"outputs": result, **inputs}
 
     def __call__(
         self,
