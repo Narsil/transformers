@@ -3,7 +3,8 @@ from typing import Optional
 import numpy as np
 
 from ..file_utils import ExplicitEnum, add_end_docstrings, is_tf_available, is_torch_available
-from .base import PIPELINE_INIT_ARGS, Pipeline
+from .base import PIPELINE_INIT_ARGS, GenericTensor, Pipeline
+from typing import Dict
 
 
 if is_tf_available():
@@ -78,6 +79,16 @@ class TextClassificationPipeline(Pipeline):
         if hasattr(self.model.config, "function_to_apply") and function_to_apply is None:
             function_to_apply = self.model.config.function_to_apply
 
+        if function_to_apply is None:
+            if self.model.config.problem_type == "multi_label_classification" or self.model.config.num_labels == 1:
+                function_to_apply = ClassificationFunction.SIGMOID
+            elif self.model.config.problem_type == "single_label_classification" or self.model.config.num_labels > 1:
+                function_to_apply = ClassificationFunction.SOFTMAX
+
+        if isinstance(function_to_apply, str):
+            function_to_apply = ClassificationFunction[function_to_apply.upper()]
+
+        self.tokenizer_kwargs = {}
         self.return_all_scores = return_all_scores if return_all_scores is not None else False
         self.function_to_apply = function_to_apply if function_to_apply is not None else None
 
@@ -120,20 +131,21 @@ class TextClassificationPipeline(Pipeline):
 
             If ``self.return_all_scores=True``, one such dictionary is returned per label.
         """
-        outputs = super().__call__(*args, **kwargs)
+        if "truncation" in kwargs:
+            self.tokenizer_kwargs["truncation"] = kwargs["truncation"]
+        return super().__call__(*args, **kwargs)
 
-        return_all_scores = return_all_scores if return_all_scores is not None else self.return_all_scores
-        function_to_apply = function_to_apply if function_to_apply is not None else self.function_to_apply
+    def preprocess(self, inputs, return_tensors=None, **preprocess_parameters) -> Dict[str, GenericTensor]:
+        if return_tensors is None:
+            return_tensors = self.framework
+        return self.tokenizer(inputs, return_tensors=return_tensors, **self.tokenizer_kwargs)
 
-        if function_to_apply is None:
-            if self.model.config.problem_type == "multi_label_classification" or self.model.config.num_labels == 1:
-                function_to_apply = ClassificationFunction.SIGMOID
-            elif self.model.config.problem_type == "single_label_classification" or self.model.config.num_labels > 1:
-                function_to_apply = ClassificationFunction.SOFTMAX
+    def forward(self, model_inputs):
+        return self.model(**model_inputs)
 
-        if isinstance(function_to_apply, str):
-            function_to_apply = ClassificationFunction[function_to_apply.upper()]
-
+    def postprocess(self, model_outputs):
+        outputs = model_outputs["logits"][0]
+        function_to_apply = self.function_to_apply
         if function_to_apply == ClassificationFunction.SIGMOID:
             scores = sigmoid(outputs)
         elif function_to_apply == ClassificationFunction.SOFTMAX:
@@ -143,12 +155,14 @@ class TextClassificationPipeline(Pipeline):
         else:
             raise ValueError(f"Unrecognized `function_to_apply` argument: {function_to_apply}")
 
-        if return_all_scores:
-            return [
-                [{"label": self.model.config.id2label[i], "score": score.item()} for i, score in enumerate(item)]
-                for item in scores
-            ]
+        if self.return_all_scores:
+            return [{"label": self.model.config.id2label[i], "score": score.item()} for i, score in enumerate(scores)]
         else:
-            return [
-                {"label": self.model.config.id2label[item.argmax()], "score": item.max().item()} for item in scores
-            ]
+            return {"label": self.model.config.id2label[scores.argmax().item()], "score": scores.max().item()}
+
+    def run_multi(self, inputs):
+        return [self.run_single(item)[0] for item in inputs]
+
+    def run_single(self, inputs):
+        "This pipeline is odd, and return a list when single item is run"
+        return [super().run_single(inputs)]
