@@ -35,6 +35,8 @@ class ImageClassificationPipeline(Pipeline):
     <https://huggingface.co/models?filter=image-classification>`__.
     """
 
+    top_k = 5
+
     def __init__(
         self,
         model: Union["PreTrainedModel", "TFPreTrainedModel"],
@@ -75,7 +77,13 @@ class ImageClassificationPipeline(Pipeline):
         image = image.convert("RGB")
         return image
 
-    def __call__(self, images: Union[str, List[str], "Image", List["Image"]], top_k=5):
+    def set_parameters(self, top_k=None):
+        if top_k is not None:
+            if top_k > self.model.config.num_labels:
+                top_k = self.model.config.num_labels
+            self.top_k = top_k
+
+    def __call__(self, images: Union[str, List[str], "Image", List["Image"]], **kwargs):
         """
         Assign labels to the image(s) passed as inputs.
 
@@ -104,10 +112,7 @@ class ImageClassificationPipeline(Pipeline):
             - **label** (:obj:`str`) -- The label identified by the model.
             - **score** (:obj:`int`) -- The score attributed by the model for that label.
         """
-        if top_k > self.model.config.num_labels:
-            top_k = self.model.config.num_labels
-        self.top_k = top_k
-        return super().__call__(images)
+        return super().__call__(images, **kwargs)
 
     def preprocess(self, image):
         image = self.load_image(image)
