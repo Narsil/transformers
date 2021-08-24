@@ -154,7 +154,10 @@ class AutomaticSpeechRecognitionPipeline(Pipeline):
         model_inputs = self.ensure_tensor_on_device(**model_inputs)
         name = self.model.__class__.__name__
         batch_size = self.feature_extractor.sampling_rate * 60  # 1mn batch
-        input_ids = model_inputs.get("input_features", model_inputs["input_values"])
+        if "input_features" in model_inputs:
+            input_ids = model_inputs["input_features"]
+        else:
+            input_ids = model_inputs["input_values"]
         n = input_ids.shape[-1]
         all_tokens = []
 
