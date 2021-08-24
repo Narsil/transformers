@@ -30,15 +30,10 @@ class ImageClassificationPipeline(Pipeline):
     <https://huggingface.co/models?filter=image-classification>`__.
     """
 
-    # XXX: we cannot hardcode a number, because
-    # we need to be overridden by `model.config.num_labels` possibly
-    top_k = None
+    top_k = 5
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.top_k is None:
-            self.set_parameters(top_k=5)
-
         if self.framework == "tf":
             raise ValueError(f"The {self.__class__} is only available in PyTorch.")
 
@@ -69,9 +64,10 @@ class ImageClassificationPipeline(Pipeline):
 
     def set_parameters(self, top_k=None):
         if top_k is not None:
-            if top_k > self.model.config.num_labels:
-                top_k = self.model.config.num_labels
             self.top_k = top_k
+        # Needs to run this way so that the default can be overridden too.
+        if self.top_k and self.top_k > self.model.config.num_labels:
+            self.top_k = self.model.config.num_labels
 
     def __call__(self, images: Union[str, List[str], "Image", List["Image"]], **kwargs):
         """

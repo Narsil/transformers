@@ -125,7 +125,7 @@ class FillMaskPipeline(Pipeline):
             values, predictions = probs.topk(self.top_k)
 
         for v, p in zip(values.tolist(), predictions.tolist()):
-            tokens = input_ids.numpy()
+            tokens = input_ids.cpu().numpy()
             if self.target_ids is not None:
                 p = self.target_ids[p].tolist()
             tokens[masked_index] = p

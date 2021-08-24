@@ -151,20 +151,31 @@ class AutomaticSpeechRecognitionPipeline(Pipeline):
     def forward(self, model_inputs):
         model_inputs = self.ensure_tensor_on_device(**model_inputs)
         name = self.model.__class__.__name__
-        if name.endswith("ForConditionalGeneration") or name.endswith("EncoderDecoderModel"):
-            encoder = self.model.get_encoder()
-            # we need to pass `processed.get("attention_mask")` here since audio encoder
-            # attention mask  length is different from expected text decoder `encoder_attention_mask` length
-            # `generate` magic to create the mask automatically won't work, we basically need to help
-            # it here.
-            tokens = self.model.generate(
-                encoder_outputs=encoder(**model_inputs), attention_mask=model_inputs.get("attention_mask")
-            )
-            tokens = tokens.squeeze(0)
-        elif name.endswith("ForCTC"):
-            outputs = self.model(**model_inputs)
-            tokens = outputs.logits.squeeze(0).argmax(dim=-1)
-        return tokens
+        batch_size = self.feature_extractor.sampling_rate * 60  # 1mn batch
+        if "input_features" in model_inputs:
+            input_ids = model_inputs["input_features"]
+        else:
+            input_ids = model_inputs["input_values"]
+        n = input_ids.shape[-1]
+        all_tokens = []
+        for i in range(0, n, batch_size):
+            if name.endswith("ForConditionalGeneration") or name.endswith("EncoderDecoderModel"):
+                encoder = self.model.get_encoder()
+                # we need to pass `processed.get("attention_mask")` here since audio encoder
+                # attention mask  length is different from expected text decoder `encoder_attention_mask` length
+                # `generate` magic to create the mask automatically won't work, we basically need to help
+                # it here.
+                attention_mask = model_inputs["attention_mask"][:, i : i + batch_size]
+                encoder_outputs = encoder(input_ids[:, i : i + batch_size], attention_mask=attention_mask)
+                tokens = self.model.generate(encoder_outputs=encoder_outputs, attention_mask=attention_mask)
+                tokens = tokens.squeeze(0)
+            elif name.endswith("ForCTC"):
+                outputs = self.model(**model_inputs)
+                tokens = outputs.logits.squeeze(0).argmax(dim=-1)
+            all_tokens.append(tokens)
+        import torch
+
+        return torch.cat(all_tokens, axis=0)
 
     def postprocess(self, model_outputs):
         skip_special_tokens = False if "CTC" in self.tokenizer.__class__.__name__ else True
