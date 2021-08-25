@@ -140,13 +140,13 @@ class Text2TextGenerationPipeline(Pipeline):
               -- The token ids of the generated text.
         """
 
-        result = super().__call__(args, **kwargs)
+        result = super().__call__(*args, **kwargs)
         if isinstance(result, dict):
             return [result]
         return result
 
     def preprocess(self, inputs):
-        inputs = self._parse_and_tokenize(*inputs, truncation=self.truncation)
+        inputs = self._parse_and_tokenize(inputs, truncation=self.truncation)
         return inputs
 
     def forward(self, model_inputs):
@@ -270,21 +270,6 @@ class TranslationPipeline(Text2TextGenerationPipeline):
     src_lang: Optional[str] = None
     tgt_lang: Optional[str] = None
 
-    def __init__(self, *args, src_lang=None, tgt_lang=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if src_lang is not None:
-            self.src_lang = src_lang
-        if tgt_lang is not None:
-            self.tgt_lang = tgt_lang
-        if src_lang is None and tgt_lang is None:
-            # Backward compatibility, direct arguments use is preferred.
-            task = kwargs.get("task", "")
-            items = task.split("_")
-            if task and len(items) == 4:
-                # translation, XX, to YY
-                self.src_lang = items[1]
-                self.tgt_lang = items[3]
-
     def check_inputs(self, input_length: int, min_length: int, max_length: int):
         if input_length > 0.9 * max_length:
             logger.warning(
@@ -311,6 +296,14 @@ class TranslationPipeline(Text2TextGenerationPipeline):
             self.src_lang = src_lang
         if tgt_lang is not None:
             self.tgt_lang = tgt_lang
+        if src_lang is None and tgt_lang is None:
+            # Backward compatibility, direct arguments use is preferred.
+            task = kwargs.get("task", "")
+            items = task.split("_")
+            if task and len(items) == 4:
+                # translation, XX, to YY
+                self.src_lang = items[1]
+                self.tgt_lang = items[3]
 
     def __call__(self, *args, **kwargs):
         r"""
