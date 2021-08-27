@@ -152,10 +152,7 @@ class Text2TextGenerationPipeline(Pipeline):
             input_length = tf.shape(model_inputs["input_ids"])[-1].numpy()
 
         self.check_inputs(input_length, self.generate_kwargs["min_length"], self.generate_kwargs["max_length"])
-        model_inputs["max_length"] = self.max_length
-        output_ids = self.model.generate(
-            **model_inputs,
-        )
+        output_ids = self.model.generate(**model_inputs, **self.generate_kwargs)
         return {"output_ids": output_ids}
 
     def postprocess(self, model_outputs):
