@@ -47,6 +47,7 @@ class Text2TextGenerationPipeline(Pipeline):
         self.return_type = ReturnType.TEXT
         self.truncation = TruncationStrategy.DO_NOT_TRUNCATE
         self.clean_up_tokenization_spaces = False
+        self.generate_kwargs = {}
         super().__init__(*args, **kwargs)
         self.generate_kwargs["min_length"] = kwargs.get("min_length", self.model.config.min_length)
         self.generate_kwargs["max_length"] = kwargs.get("max_length", self.model.config.max_length)
