@@ -263,7 +263,8 @@ class ConversationalPipeline(Pipeline):
 
     def forward(self, model_inputs):
         max_length = self.max_length
-        model_inputs = self.ensure_tensor_on_device(**model_inputs)
+        if self.framework == "pt":
+            model_inputs = self.ensure_tensor_on_device(**model_inputs)
         n = model_inputs["input_ids"].shape[1]
         if max_length - self.minimum_tokens < n:
             logger.warning(
