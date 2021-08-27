@@ -1,17 +1,12 @@
 import os
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import List, Union
 
 import requests
 
-from ..feature_extraction_utils import PreTrainedFeatureExtractor
 from ..file_utils import add_end_docstrings, is_torch_available, is_vision_available, requires_backends
 from ..utils import logging
 from .base import PIPELINE_INIT_ARGS, Pipeline
 
-
-if TYPE_CHECKING:
-    from ..modeling_tf_utils import TFPreTrainedModel
-    from ..modeling_utils import PreTrainedModel
 
 if is_vision_available():
     from PIL import Image
@@ -35,25 +30,20 @@ class ImageClassificationPipeline(Pipeline):
     <https://huggingface.co/models?filter=image-classification>`__.
     """
 
-    top_k = 5
+    # XXX: we cannot hardcode a number, because
+    # we need to be overridden by `model.config.num_labels` possibly
+    top_k = None
 
-    def __init__(
-        self,
-        model: Union["PreTrainedModel", "TFPreTrainedModel"],
-        feature_extractor: PreTrainedFeatureExtractor,
-        framework: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(model, feature_extractor=feature_extractor, framework=framework, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.top_k is None:
+            self.set_parameters(top_k=5)
 
         if self.framework == "tf":
             raise ValueError(f"The {self.__class__} is only available in PyTorch.")
 
         requires_backends(self, "vision")
-
         self.check_model_type(MODEL_FOR_IMAGE_CLASSIFICATION_MAPPING)
-
-        self.feature_extractor = feature_extractor
 
     @staticmethod
     def load_image(image: Union[str, "Image.Image"]):

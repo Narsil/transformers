@@ -1,8 +1,9 @@
+from typing import Dict
+
 import numpy as np
 
 from ..file_utils import ExplicitEnum, add_end_docstrings, is_tf_available, is_torch_available
 from .base import PIPELINE_INIT_ARGS, GenericTensor, Pipeline
-from typing import Dict
 
 
 if is_tf_available():
@@ -64,7 +65,7 @@ class TextClassificationPipeline(Pipeline):
     function_to_apply = ClassificationFunction.NONE
 
     def __init__(self, **kwargs):
-
+        super().__init__(**kwargs)
         if "function_to_apply" not in kwargs:
             # Default value before `set_parameters`
             if self.model.config.problem_type == "multi_label_classification" or self.model.config.num_labels == 1:
@@ -76,8 +77,6 @@ class TextClassificationPipeline(Pipeline):
             else:
                 function_to_apply = ClassificationFunction.NONE
             self.function_to_apply = function_to_apply
-
-        super().__init__(**kwargs)
 
         self.check_model_type(
             TF_MODEL_FOR_SEQUENCE_CLASSIFICATION_MAPPING
@@ -147,6 +146,11 @@ class TextClassificationPipeline(Pipeline):
 
     def postprocess(self, model_outputs):
         outputs = model_outputs["logits"][0]
+        if self.framework == "pt":
+            outputs = outputs.cpu().numpy()
+        else:
+            outputs = outputs.numpy()
+
         function_to_apply = self.function_to_apply
         if function_to_apply == ClassificationFunction.SIGMOID:
             scores = sigmoid(outputs)

@@ -48,8 +48,8 @@ class Text2TextGenerationPipeline(Pipeline):
         self.truncation = TruncationStrategy.DO_NOT_TRUNCATE
         self.clean_up_tokenization_spaces = False
         super().__init__(*args, **kwargs)
-        self.min_length = kwargs.get("min_length", self.model.config.min_length)
-        self.max_length = kwargs.get("max_length", self.model.config.max_length)
+        self.generate_kwargs["min_length"] = kwargs.get("min_length", self.model.config.min_length)
+        self.generate_kwargs["max_length"] = kwargs.get("max_length", self.model.config.max_length)
 
         self.check_model_type(
             TF_MODEL_FOR_SEQ_TO_SEQ_CAUSAL_LM_MAPPING
@@ -69,19 +69,13 @@ class Text2TextGenerationPipeline(Pipeline):
         # assert return_tensors or return_text, "You must specify return_tensors=True or return_text=True"
         if return_tensors is not None and return_type is None:
             return_type = ReturnType.TENSORS if return_tensors else ReturnType.TEXT
-        if "min_length" in generate_kwargs:
-            self.min_length = generate_kwargs["min_length"]
-        if "max_length" in generate_kwargs:
-            self.max_length = generate_kwargs["max_length"]
-
         if return_type is not None:
             self.return_type = return_type
         if truncation is not None:
             self.truncation = truncation
         if clean_up_tokenization_spaces is not None:
             self.clean_up_tokenization_spaces = clean_up_tokenization_spaces
-        if "num_beams" in generate_kwargs:
-            self.num_beams = generate_kwargs["num_beams"]
+        self.generate_kwargs.update(generate_kwargs)
 
     def check_inputs(self, input_length: int, min_length: int, max_length: int):
         """
@@ -156,7 +150,7 @@ class Text2TextGenerationPipeline(Pipeline):
         elif self.framework == "tf":
             input_length = tf.shape(model_inputs["input_ids"])[-1].numpy()
 
-        self.check_inputs(input_length, self.min_length, self.max_length)
+        self.check_inputs(input_length, self.generate_kwargs["min_length"], self.generate_kwargs["max_length"])
         model_inputs["max_length"] = self.max_length
         output_ids = self.model.generate(
             **model_inputs,
@@ -298,7 +292,7 @@ class TranslationPipeline(Text2TextGenerationPipeline):
             self.tgt_lang = tgt_lang
         if src_lang is None and tgt_lang is None:
             # Backward compatibility, direct arguments use is preferred.
-            task = kwargs.get("task", "")
+            task = kwargs.get("task", self.task)
             items = task.split("_")
             if task and len(items) == 4:
                 # translation, XX, to YY

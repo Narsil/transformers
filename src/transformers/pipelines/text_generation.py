@@ -1,5 +1,6 @@
-from transformers import MODEL_FOR_CAUSAL_LM_MAPPING, TF_MODEL_FOR_CAUSAL_LM_MAPPING
 import enum
+
+from transformers import MODEL_FOR_CAUSAL_LM_MAPPING, TF_MODEL_FOR_CAUSAL_LM_MAPPING
 
 from ..file_utils import add_end_docstrings
 from .base import PIPELINE_INIT_ARGS, Pipeline
@@ -138,6 +139,9 @@ class TextGenerationPipeline(Pipeline):
             prefix_length = prefix_inputs["input_ids"].shape[-1]
             if self.generate_kwargs.get("max_length", None) is not None:
                 self.generate_kwargs["max_length"] += prefix_length
+            else:
+                self.generate_kwargs["max_length"] = self.model.config.max_length + prefix_length
+
             if self.generate_kwargs.get("min_length", None) is not None:
                 self.generate_kwargs["min_length"] += prefix_length
         prefix = self.prefix or ""
