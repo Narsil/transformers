@@ -74,7 +74,6 @@ class TranslationPipelineTests(unittest.TestCase, metaclass=PipelineTestCaseMeta
     def test_en_to_de_pt(self):
         translator = pipeline("translation_en_to_de", model="patrickvonplaten/t5-tiny-random", framework="pt")
         outputs = translator("This is a test string", max_length=20)
-        print(outputs)
         self.assertEqual(
             outputs,
             [
