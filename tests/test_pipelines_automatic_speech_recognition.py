@@ -66,6 +66,12 @@ class AutomaticSpeechRecognitionPipelineTests(unittest.TestCase, metaclass=Pipel
         outputs = speech_recognizer(audio)
         self.assertEqual(outputs, {"text": ANY(str)})
 
+        if speech_recognizer.model.__class__ in MODEL_FOR_CTC_MAPPING.values():
+            outputs = speech_recognizer(audio, chunk_length_s=1.0, batch_size=2)
+        else:
+            with self.assertRaises(ValueError):
+                outputs = speech_recognizer(audio, chunk_length_s=1.0, batch_size=2)
+
     @require_torch
     @slow
     def test_pt_defaults(self):
@@ -228,7 +234,7 @@ class AutomaticSpeechRecognitionPipelineTests(unittest.TestCase, metaclass=Pipel
             tokenizer=tokenizer,
             feature_extractor=feature_extractor,
             framework="pt",
-            chunk_length_ms=10_000,
+            chunk_length_s=10.0,
         )
 
         from datasets import load_dataset

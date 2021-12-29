@@ -85,11 +85,11 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
             tokenizer ([`PreTrainedTokenizer`]):
                 The tokenizer that will be used by the pipeline to encode data for the model. This object inherits from
                 [`PreTrainedTokenizer`].
-            chunk_length_ms (`int`, *optional*, defaults to 0):
+            chunk_length_s (`float`, *optional*, defaults to 0.0):
                 The input length for in each chunk. If `0` then chunking is disabled (default). Only available for CTC
                 models.
-            stride_length_ms (`int`, *optional*, defaults to `chunk_length_ms / 6`):
-                The length of stride on the left and right of each chunk. Used only with `chunk_length_ms > 0`. This
+            stride_length_s (`float`, *optional*, defaults to `chunk_length_s / 6`):
+                The length of stride on the left and right of each chunk. Used only with `chunk_length_s > 0`. This
                 enables the model to *see* more context and infer letters better than without this context but the
                 pipeline discards the stride bits at the end to make the final reconstitution as perfect as possible.
             framework (`str`, *optional*):
@@ -139,13 +139,13 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
     def _sanitize_parameters(self, **kwargs):
         # No parameters on this pipeline right now
         preprocess_params = {}
-        if "chunk_length_ms" in kwargs:
-            preprocess_params["chunk_length_ms"] = kwargs["chunk_length_ms"]
-        if "stride_length_ms" in kwargs:
-            preprocess_params["stride_length_ms"] = kwargs["stride_length_ms"]
+        if "chunk_length_s" in kwargs:
+            preprocess_params["chunk_length_s"] = kwargs["chunk_length_s"]
+        if "stride_length_s" in kwargs:
+            preprocess_params["stride_length_s"] = kwargs["stride_length_s"]
         return preprocess_params, {}, {}
 
-    def preprocess(self, inputs, chunk_length_ms=0, stride_length_ms=None):
+    def preprocess(self, inputs, chunk_length_s=0, stride_length_s=None):
         if isinstance(inputs, str):
             with open(inputs, "rb") as f:
                 inputs = f.read()
@@ -158,16 +158,12 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
         if len(inputs.shape) != 1:
             raise ValueError("We expect a single channel audio input for AutomaticSpeechRecognitionPipeline")
 
-        if chunk_length_ms:
-            if stride_length_ms is None:
-                stride_length_ms = chunk_length_ms // 6
+        if chunk_length_s:
+            if stride_length_s is None:
+                stride_length_s = chunk_length_s // 6
             inputs_len = len(inputs)
-            chunk_len = chunk_length_ms * self.feature_extractor.sampling_rate // 1000
-            stride_len = stride_length_ms * self.feature_extractor.sampling_rate // 1000
-
-            # Redefine chunk_len to useful chunk length
-            # Not the size
-            # chunk_len = chunk_len - 2 * stride_len
+            chunk_len = int(round(chunk_length_s * self.feature_extractor.sampling_rate))
+            stride_len = int(round(stride_length_s * self.feature_extractor.sampling_rate))
 
             if self.model.__class__ not in MODEL_FOR_CTC_MAPPING.values():
                 raise ValueError(
