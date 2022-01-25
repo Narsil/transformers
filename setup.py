@@ -349,6 +349,21 @@ install_requires = [
     deps["tqdm"],  # progress bars in model download and training scripts
 ]
 
+
+def get_custom_kernel_files():
+    files = []
+    src_root = os.path.abspath(os.path.dirname(__file__))
+    src_root = os.path.join(src_root, "src/transformers")
+    for root, dirs, filenames in os.walk(src_root):
+        for filename in filenames:
+            _, ext = os.path.splitext(filename)
+            if ext in {".cu", ".cpp", ".cuh", ".h"}:
+                files.append(os.path.join(root, filename))
+    return files
+
+
+custom_kernel_files = get_custom_kernel_files()
+
 setup(
     name="transformers",
     version="4.16.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
@@ -362,7 +377,7 @@ setup(
     url="https://github.com/huggingface/transformers",
     package_dir={"": "src"},
     packages=find_packages("src"),
-    package_data={"transformers": ["py.typed", "*.cu", "*.cpp", "*.cuh"]},
+    package_data={"transformers": ["py.typed", *custom_kernel_files]},
     zip_safe=False,
     extras_require=extras,
     entry_points={"console_scripts": ["transformers-cli=transformers.commands.transformers_cli:main"]},

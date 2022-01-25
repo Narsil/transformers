@@ -1,6 +1,7 @@
 import os
 
-def load_cuda_kernels():
+
+def load_cuda_kernels(verbose=True):
     from torch.utils.cpp_extension import load
 
     root = os.path.join(os.path.dirname(os.path.realpath(__file__)), "custom_kernel")
@@ -16,7 +17,7 @@ def load_cuda_kernels():
     load(
         "MultiScaleDeformableAttention",
         src_files,
-        # verbose=True,
+        verbose=verbose,
         with_cuda=True,
         extra_include_paths=[root],
         # build_directory=os.path.dirname(os.path.realpath(__file__)),
