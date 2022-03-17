@@ -39,6 +39,51 @@ class TransposeType(ExplicitEnum):
     SIMPLE = "simple"
     CONV1D = "conv1d"
     CONV2D = "conv2d"
+    DEPTHWISE_CONV1D = "depthwise_conv1d"
+    UNSQUEEZE_0 = "unsqueeze_0"
+    BIAS_2D1 = "bias_2d1"
+
+    def apply(self, array):
+        if self is TransposeType.CONV2D:
+            # Conv2D weight:
+            #    TF: (kernel[0], kernel[1], num_in_channel, num_out_channel)
+            # -> PT: (num_out_channel, num_in_channel, kernel[0], kernel[1])
+            array = np.transpose(array, axes=(3, 2, 0, 1))
+        elif self is TransposeType.CONV1D:
+            # Conv1D weight:
+            #    TF: (kernel, num_in_channel, num_out_channel)
+            # -> PT: (num_out_channel, num_in_channel, kernel)
+            array = np.transpose(array, axes=(2, 1, 0))
+        elif self is TransposeType.DEPTHWISE_CONV1D:
+            array = np.transpose(array, axes=(1, 2, 0))
+        elif self is TransposeType.UNSQUEEZE_0:
+            array = np.squeeze(array, axis=0)
+        elif self is TransposeType.BIAS_2D1:
+            array = np.expand_dims(array, axis=1)
+        elif self is TransposeType.SIMPLE:
+            array = np.transpose(array)
+        return array
+
+    def apply_reverse(self, array):
+        if self is TransposeType.CONV2D:
+            # Conv2D weight:
+            #    PT: (num_out_channel, num_in_channel, kernel[0], kernel[1])
+            # -> TF: (kernel[0], kernel[1], num_in_channel, num_out_channel)
+            array = np.transpose(array, axes=(2, 3, 1, 0))
+        elif self is TransposeType.CONV1D:
+            # Conv1D weight:
+            #    PT: (num_out_channel, num_in_channel, kernel)
+            # -> TF: (kernel, num_in_channel, num_out_channel)
+            array = np.transpose(array, axes=(2, 1, 0))
+        elif self is TransposeType.DEPTHWISE_CONV1D:
+            array = np.transpose(array, axes=(2, 0, 1))
+        elif self is TransposeType.SIMPLE:
+            array = np.transpose(array)
+        elif self is TransposeType.UNSQUEEZE_0:
+            array = np.expand_dims(array, axis=0)
+        elif self is TransposeType.BIAS_2D1:
+            array = np.squeeze(array, axis=1)
+        return array
 
 
 def convert_tf_weight_name_to_pt_weight_name(tf_name, start_prefix_to_remove="", tf_weight_shape=None):
@@ -65,6 +110,7 @@ def convert_tf_weight_name_to_pt_weight_name(tf_name, start_prefix_to_remove="",
     )  # '_._' is replaced by a level separation (can be used to convert TF2.0 lists in PyTorch nn.ModulesList)
     tf_name = re.sub(r"//+", "/", tf_name)  # Remove empty levels at the end
     tf_name = tf_name.split("/")  # Convert from TF2.0 '/' separators to PyTorch '.' separators
+
     # Some weights have a single name without "/" such as final_logits_bias in BART
     if len(tf_name) > 1:
         tf_name = tf_name[1:]  # Remove level zero
@@ -72,14 +118,20 @@ def convert_tf_weight_name_to_pt_weight_name(tf_name, start_prefix_to_remove="",
     # When should we transpose the weights
     if tf_name[-1] == "kernel" and tf_weight_shape is not None and len(tf_weight_shape) == 4:
         transpose = TransposeType.CONV2D
-    elif tf_name[-1] == "kernel" and tf_weight_shape is not None and len(tf_weight_shape) == 3:
+    elif tf_name[-1] in {"kernel", "weight_g"} and tf_weight_shape is not None and len(tf_weight_shape) == 3:
         transpose = TransposeType.CONV1D
-    elif bool(
-        tf_name[-1] in ["kernel", "pointwise_kernel", "depthwise_kernel"]
-        or "emb_projs" in tf_name
-        or "out_projs" in tf_name
-    ):
+    elif bool(tf_name[-1] in ["kernel", "pointwise_kernel"] or "emb_projs" in tf_name or "out_projs" in tf_name):
         transpose = TransposeType.SIMPLE
+    elif tf_name[-1] in {"depthwise_kernel"}:
+        transpose = TransposeType.DEPTHWISE_CONV1D
+    elif tf_name[-1] == "bias" and tf_name[-2] == "key_conv_attn_layer":
+        transpose = TransposeType.BIAS_2D1
+    elif tf_name[-1] == "bias" and tf_name[-2] in {"c_attn", "c_proj", "c_fc"}:
+        # GPT legacy
+        transpose = TransposeType.UNSQUEEZE_0
+    elif tf_name[-1] == "logit_scale":
+        # CLIP legacy
+        transpose = TransposeType.UNSQUEEZE_0
     else:
         transpose = TransposeType.NO
 
@@ -321,32 +373,8 @@ def apply_transpose(array, transpose, pt_weight):
     Given a numpy array, a transpose enum, and the target tensor shape Attempt to modify the array into something
     fitting the target tensor The direction here is TF -> PT
     """
-    if transpose is TransposeType.CONV2D:
-        # Conv2D weight:
-        #    TF: (kernel[0], kernel[1], num_in_channel, num_out_channel)
-        # -> PT: (num_out_channel, num_in_channel, kernel[0], kernel[1])
-        array = np.transpose(array, axes=(3, 2, 0, 1))
-    elif transpose is TransposeType.CONV1D:
-        # Conv1D weight:
-        #    TF: (kernel, num_in_channel, num_out_channel)
-        # -> PT: (num_out_channel, num_in_channel, kernel)
-        array = np.transpose(array, axes=(2, 1, 0))
-    elif transpose is TransposeType.SIMPLE:
-        array = np.transpose(array)
 
-    if len(pt_weight.shape) < len(array.shape):
-        array = np.squeeze(array)
-    elif len(pt_weight.shape) > len(pt_weight.shape):
-        array = np.expand_dims(array, axis=0)
-    if list(pt_weight.shape) != list(array.shape):
-        squeezed_tensor_shape = [dim for dim in pt_weight.shape if dim != 1]
-        squeezed_array_shape = [dim for dim in array.shape if dim != 1]
-        # Making sure we don't do wrong reshape
-        if squeezed_tensor_shape == squeezed_array_shape:
-            array = array.reshape(pt_weight.shape)
-    # Make sure we have a proper numpy array
-    if np.isscalar(array):
-        array = np.array(array)
+    array = transpose.apply(array)
     check_valid(array, pt_weight)
     return array
 
@@ -356,32 +384,8 @@ def apply_reverse(array, transpose, symbolic_weight):
     Given a numpy array, a transpose enum, and the target tensor shape Attempt to modify the array into something
     fitting the target tensor The direction here is PT -> TF
     """
-    if transpose is TransposeType.CONV2D:
-        # Conv2D weight:
-        #    PT: (num_out_channel, num_in_channel, kernel[0], kernel[1])
-        # -> TF: (kernel[0], kernel[1], num_in_channel, num_out_channel)
-        array = np.transpose(array, axes=(2, 3, 1, 0))
-    elif transpose is TransposeType.CONV1D:
-        # Conv1D weight:
-        #    PT: (num_out_channel, num_in_channel, kernel)
-        # -> TF: (kernel, num_in_channel, num_out_channel)
-        array = np.transpose(array, axes=(2, 1, 0))
-    elif transpose is TransposeType.SIMPLE:
-        array = np.transpose(array)
-
-    if len(symbolic_weight.shape) < len(array.shape):
-        array = np.squeeze(array)
-    elif len(symbolic_weight.shape) > len(array.shape):
-        array = np.expand_dims(array, axis=0)
-
-    if list(symbolic_weight.shape) != list(array.shape):
-        squeezed_tensor_shape = [dim for dim in symbolic_weight.shape if dim != 1]
-        squeezed_array_shape = [dim for dim in array.shape if dim != 1]
-        if squeezed_array_shape == squeezed_tensor_shape:
-            array = np.reshape(array, symbolic_weight.shape)
-
+    transpose.apply_reverse(array)
     check_valid(array, symbolic_weight)
-
     return array
 
 
