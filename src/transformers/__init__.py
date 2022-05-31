@@ -2223,6 +2223,13 @@ else:
             "TFOpenAIGPTPreTrainedModel",
         ]
     )
+    _import_structure["models.opt"].extend(
+        [
+            "TFOPTForCausalLM",
+            "TFOPTModel",
+            "TFOPTPreTrainedModel",
+        ]
+    )
     _import_structure["models.pegasus"].extend(
         ["TFPegasusForConditionalGeneration", "TFPegasusModel", "TFPegasusPreTrainedModel"]
     )
@@ -2570,6 +2577,13 @@ else:
         ]
     )
     _import_structure["models.mt5"].extend(["FlaxMT5ForConditionalGeneration", "FlaxMT5Model"])
+    _import_structure["models.opt"].extend(
+        [
+            "FlaxOPTForCausalLM",
+            "FlaxOPTModel",
+            "FlaxOPTPreTrainedModel",
+        ]
+    )
     _import_structure["models.pegasus"].extend(
         [
             "FlaxPegasusForConditionalGeneration",
@@ -4466,6 +4480,7 @@ if TYPE_CHECKING:
             TFOpenAIGPTModel,
             TFOpenAIGPTPreTrainedModel,
         )
+        from .models.opt import TFOPTForCausalLM, TFOPTModel, TFOPTPreTrainedModel
         from .models.pegasus import TFPegasusForConditionalGeneration, TFPegasusModel, TFPegasusPreTrainedModel
         from .models.rag import TFRagModel, TFRagPreTrainedModel, TFRagSequenceForGeneration, TFRagTokenForGeneration
         from .models.rembert import (
@@ -4735,6 +4750,7 @@ if TYPE_CHECKING:
             FlaxMBartPreTrainedModel,
         )
         from .models.mt5 import FlaxMT5ForConditionalGeneration, FlaxMT5Model
+        from .models.opt import FlaxOPTForCausalLM, FlaxOPTModel, FlaxOPTPreTrainedModel
         from .models.pegasus import FlaxPegasusForConditionalGeneration, FlaxPegasusModel, FlaxPegasusPreTrainedModel
         from .models.roberta import (
             FlaxRobertaForCausalLM,
