@@ -1670,7 +1670,11 @@ class GenerationMixin:
         cur_len = input_ids.shape[-1]
 
         this_peer_finished = False  # used by synced_gpus only
+        i = 0
+        import os
         while True:
+            os.environ["GENERATION_STEP"] = str(i)
+            i += 1
 
             if synced_gpus:
                 # Under synced_gpus the `forward` call must continue until all gpus complete their sequence.

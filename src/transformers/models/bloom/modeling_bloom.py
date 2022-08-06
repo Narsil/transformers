@@ -14,6 +14,8 @@
 # limitations under the License.
 """PyTorch BLOOM model."""
 
+import os
+import numpy as np
 import math
 import warnings
 from typing import Optional, Tuple, Union
@@ -209,9 +211,10 @@ class BloomGelu(nn.Module):
 
 
 class BloomAttention(nn.Module):
-    def __init__(self, config: BloomConfig):
+    def __init__(self, config: BloomConfig, layer_number: int):
         super().__init__()
 
+        self.layer_number = layer_number
         self.pretraining_tp = config.pretraining_tp
         self.slow_but_exact = config.slow_but_exact
 
@@ -314,12 +317,15 @@ class BloomAttention(nn.Module):
 
         # [batch_size * num_heads, q_length, kv_length]
         # we use `torch.Tensor.baddbmm` instead of `torch.baddbmm` as the latter isn't supported by TorchScript v1.11
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_baddbmm_key_layer_{self.layer_number}", key_layer.cpu().float().numpy())
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_baddbmm_query_layer_{self.layer_number}", query_layer.cpu().float().numpy())
         matmul_result = alibi.baddbmm(
             batch1=query_layer,
             batch2=key_layer,
             beta=self.beta,
             alpha=self.inv_norm_factor,
         )
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_baddbmm_matmul_result_layer_{self.layer_number}", matmul_result.cpu().float().numpy())
 
         # change view to [batch_size, num_heads, q_length, kv_length]
         attention_scores = matmul_result.view(batch_size, self.num_heads, q_length, kv_length)
@@ -400,13 +406,14 @@ class BloomMLP(nn.Module):
 
 
 class BloomBlock(nn.Module):
-    def __init__(self, config: BloomConfig):
+    def __init__(self, config: BloomConfig, layer_number: int):
         super().__init__()
         hidden_size = config.hidden_size
 
+        self.layer_number = layer_number
         self.input_layernorm = LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.num_heads = config.n_head
-        self.self_attention = BloomAttention(config)
+        self.self_attention = BloomAttention(config, layer_number)
         self.post_attention_layernorm = LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
         self.mlp = BloomMLP(config)
@@ -592,7 +599,7 @@ class BloomModel(BloomPreTrainedModel):
         self.word_embeddings_layernorm = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
         # Transformer blocks
-        self.h = nn.ModuleList([BloomBlock(config) for _ in range(config.num_hidden_layers)])
+        self.h = nn.ModuleList([BloomBlock(config, i) for i in range(config.num_hidden_layers)])
 
         # Final Layer Norm
         self.ln_f = LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
