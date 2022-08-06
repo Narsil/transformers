@@ -348,7 +348,10 @@ class BloomAttention(nn.Module):
         attention_probs_reshaped = attention_probs.view(batch_size * self.num_heads, q_length, kv_length)
 
         # matmul: [batch_size * num_heads, q_length, head_dim]
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_bmm_attention_probs_reshaped_{self.layer_number}", attention_probs_reshaped.cpu().float().numpy())
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_bmm_value_layer_{self.layer_number}", value_layer.cpu().float().numpy())
         context_layer = torch.bmm(attention_probs_reshaped, value_layer)
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_bmm_context_layer_{self.layer_number}", context_layer.cpu().float().numpy())
 
         # change view [batch_size, num_heads, q_length, head_dim]
         context_layer = self._merge_heads(context_layer)
@@ -375,10 +378,11 @@ class BloomAttention(nn.Module):
 
 
 class BloomMLP(nn.Module):
-    def __init__(self, config: BloomConfig):
+    def __init__(self, config: BloomConfig, layer_number:int):
         super().__init__()
         hidden_size = config.hidden_size
 
+        self.layer_number = layer_number
         self.pretraining_tp = config.pretraining_tp
         self.slow_but_exact = config.slow_but_exact
         self.dense_h_to_4h = nn.Linear(hidden_size, 4 * hidden_size)
@@ -387,6 +391,7 @@ class BloomMLP(nn.Module):
         self.hidden_dropout = config.hidden_dropout
 
     def forward(self, hidden_states: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_mlp_init_{self.layer_number}", hidden_states.cpu().float().numpy())
         hidden_states = self.gelu_impl(self.dense_h_to_4h(hidden_states))
 
         if self.pretraining_tp > 1 and self.slow_but_exact:
@@ -401,6 +406,7 @@ class BloomMLP(nn.Module):
             intermediate_output = self.dense_4h_to_h(hidden_states)
 
         output = dropout_add(intermediate_output, residual, self.hidden_dropout, self.training)
+        np.save(f"tensors/{os.environ['GENERATION_STEP']}_python_mlp_output_{self.layer_number}", output.cpu().float().numpy())
 
         return output
 
@@ -416,7 +422,7 @@ class BloomBlock(nn.Module):
         self.self_attention = BloomAttention(config, layer_number)
         self.post_attention_layernorm = LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-        self.mlp = BloomMLP(config)
+        self.mlp = BloomMLP(config, layer_number)
 
         self.apply_residual_connection_post_layernorm = config.apply_residual_connection_post_layernorm
         self.hidden_dropout = config.hidden_dropout
