@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import inspect
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
@@ -190,13 +189,17 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
         if "stride_length_s" in kwargs:
             preprocess_params["stride_length_s"] = kwargs["stride_length_s"]
 
+        forward_params = {}
+        if "generate_kwargs" in kwargs:
+            forward_params["generate_kwargs"] = kwargs["generate_kwargs"]
+
         postprocess_params = {}
         if "decoder_kwargs" in kwargs:
             postprocess_params["decoder_kwargs"] = kwargs["decoder_kwargs"]
         if "return_timestamps" in kwargs:
             postprocess_params["return_timestamps"] = kwargs["return_timestamps"]
 
-        return preprocess_params, {}, postprocess_params
+        return preprocess_params, forward_params, postprocess_params
 
     def preprocess(self, inputs, chunk_length_s=0, stride_length_s=None):
         if isinstance(inputs, str):
@@ -250,6 +253,14 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
             raise ValueError("We expect a single channel audio input for AutomaticSpeechRecognitionPipeline")
 
         if chunk_length_s:
+            # Decode_chunked is a special model for Seq2seq models that output
+            # timestamp tokens. For them, it's *possible* albeit probably never perfect
+            # to stitch back together the original input.
+            if self.type not in {"ctc", "ctc_with_lm"} and not hasattr(self.tokenizer, "_decode_chunked"):
+                raise ValueError(
+                    "`chunk_length_s` is only valid for CTC models, use other chunking options for other models"
+                )
+
             if stride_length_s is None:
                 stride_length_s = chunk_length_s / 6
 
@@ -260,14 +271,10 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
             # Currently chunking is not possible at this level for `seq2seq` so
             # it's ok.
             align_to = self.model.config.inputs_to_logits_ratio
-            chunk_len = int(round(chunk_length_s * self.feature_extractor.sampling_rate / align_to) * align_to)
-            stride_left = int(round(stride_length_s[0] * self.feature_extractor.sampling_rate / align_to) * align_to)
-            stride_right = int(round(stride_length_s[1] * self.feature_extractor.sampling_rate / align_to) * align_to)
+            chunk_len = int(round(chunk_length_s * self.feature_extractor.sampling_rate / align_to)) * align_to
+            stride_left = int(round(stride_length_s[0] * self.feature_extractor.sampling_rate / align_to)) * align_to
+            stride_right = int(round(stride_length_s[1] * self.feature_extractor.sampling_rate / align_to)) * align_to
 
-            if self.type not in {"ctc", "ctc_with_lm"}:
-                raise ValueError(
-                    "`chunk_length_s` is only valid for CTC models, use other chunking options for other models"
-                )
             if chunk_len < stride_left + stride_right:
                 raise ValueError("Chunk length must be superior to stride length")
 
@@ -285,7 +292,9 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
                 processed["stride"] = stride
             yield {"is_last": True, **processed, **extra}
 
-    def _forward(self, model_inputs):
+    def _forward(self, model_inputs, generate_kwargs=None):
+        if generate_kwargs is None:
+            generate_kwargs = {}
         is_last = model_inputs.pop("is_last")
         if self.type == "seq2seq":
             encoder = self.model.get_encoder()
@@ -305,15 +314,20 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
                     f"`input_features` or `input_values` key, but only has {model_inputs.keys()}"
                 )
 
-            accepts_attention_mask = "attention_mask" in set(inspect.signature(encoder.forward).parameters.keys())
-            if accepts_attention_mask:
-                attention_mask = model_inputs.pop("attention_mask", None)
-                tokens = self.model.generate(
-                    encoder_outputs=encoder(inputs, attention_mask=attention_mask),
-                    attention_mask=attention_mask,
-                )
-            else:
-                tokens = self.model.generate(inputs)
+            attention_mask = model_inputs.pop("attention_mask", None)
+            import torch
+
+            tokens = self.model.generate(
+                encoder_outputs=encoder(inputs, attention_mask=attention_mask),
+                attention_mask=attention_mask,
+                # We need to just generate as much as possible.
+                max_new_tokens=1000,
+                # begin_suppress_tokens=[],
+                # forced_decoder_ids=[[1, 50258]],
+                num_beams=5,
+                decoder_input_ids=torch.LongTensor([[50258, 50259, 50359]]),
+                **generate_kwargs,
+            )
 
             out = {"tokens": tokens}
 
@@ -338,6 +352,7 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
                 else:
                     out["stride"] = rescale_stride(logits, stride, ratio)
         # Leftover
+        print(f"OUT {out['tokens']}")
         extra = model_inputs
         return {"is_last": is_last, **out, **extra}
 
@@ -351,67 +366,72 @@ class AutomaticSpeechRecognitionPipeline(ChunkPipeline):
             raise ValueError("CTC with LM cannot return `char` timestamps, only `words`")
 
         final_items = []
-        key = "logits" if self.type == "ctc_with_lm" else "tokens"
-        for outputs in model_outputs:
-            items = outputs[key].numpy()
-            stride = outputs.pop("stride", None)
-            if stride is not None:
-                total_n, left, right = stride
-                # Total_n might be < logits.shape[1]
-                # because of padding, that's why
-                # we need to reconstruct this information
-                # This won't work with left padding (which doesn't exist right now)
-                right_n = total_n - right
-                items = items[:, left:right_n]
-            final_items.append(items)
-        items = np.concatenate(final_items, axis=1)
-        items = items.squeeze(0)
-        if self.type == "ctc_with_lm":
-            if decoder_kwargs is None:
-                decoder_kwargs = {}
-            beams = self.decoder.decode_beams(items, **decoder_kwargs)
-            text = beams[0][0]
-            if return_timestamps:
-                # Simply cast from pyctcdecode format to wav2vec2 format to leverage
-                # pre-existing code later
-                chunk_offset = beams[0][2]
-                word_offsets = []
-                for word, (start_offset, end_offset) in chunk_offset:
-                    word_offsets.append({"word": word, "start_offset": start_offset, "end_offset": end_offset})
-
+        if hasattr(self.tokenizer, "_decode_chunked"):
+            return self.tokenizer._decode_chunked(model_outputs, return_timestamps=return_timestamps)
         else:
-            skip_special_tokens = self.type != "ctc"
-            text = self.tokenizer.decode(items, skip_special_tokens=skip_special_tokens)
-            if return_timestamps:
-                char_offsets = self.tokenizer.decode(
-                    items, skip_special_tokens=skip_special_tokens, output_char_offsets=True
-                )["char_offsets"]
-                if return_timestamps == "word":
-                    word_offsets = self.tokenizer._get_word_offsets(
-                        char_offsets, self.tokenizer.replace_word_delimiter_char
-                    )
+            key = "logits" if self.type == "ctc_with_lm" else "tokens"
+            for outputs in model_outputs:
+                items = outputs[key].numpy()
+                stride = outputs.pop("stride", None)
+                if stride is not None:
+                    total_n, left, right = stride
+                    # Total_n might be < logits.shape[1]
+                    # because of padding, that's why
+                    # we need to reconstruct this information
+                    # This won't work with left padding (which doesn't exist right now)
+                    right_n = total_n - right
+                    items = items[:, left:right_n]
+                    print(stride)
+                final_items.append(items)
+            items = np.concatenate(final_items, axis=1)
+            items = items.squeeze(0)
+            if self.type == "ctc_with_lm":
+                if decoder_kwargs is None:
+                    decoder_kwargs = {}
+                beams = self.decoder.decode_beams(items, **decoder_kwargs)
+                text = beams[0][0]
+                if return_timestamps:
+                    # Simply cast from pyctcdecode format to wav2vec2 format to leverage
+                    # pre-existing code later
+                    chunk_offset = beams[0][2]
+                    word_offsets = []
+                    for word, (start_offset, end_offset) in chunk_offset:
+                        word_offsets.append({"word": word, "start_offset": start_offset, "end_offset": end_offset})
 
-        if return_timestamps:
-            if return_timestamps == "word":
-                offsets = word_offsets
             else:
-                offsets = char_offsets
-            chunks = []
-            for item in offsets:
-                start = item["start_offset"] * self.model.config.inputs_to_logits_ratio
-                start /= self.feature_extractor.sampling_rate
+                skip_special_tokens = self.type != "ctc"
+                skip_special_tokens = False
+                text = self.tokenizer.decode(items, skip_special_tokens=skip_special_tokens)
+                if return_timestamps:
+                    char_offsets = self.tokenizer.decode(
+                        items, skip_special_tokens=skip_special_tokens, output_char_offsets=True
+                    )["char_offsets"]
+                    if return_timestamps == "word":
+                        word_offsets = self.tokenizer._get_word_offsets(
+                            char_offsets, self.tokenizer.replace_word_delimiter_char
+                        )
 
-                stop = item["end_offset"] * self.model.config.inputs_to_logits_ratio
-                stop /= self.feature_extractor.sampling_rate
+            if return_timestamps:
+                if return_timestamps == "word":
+                    offsets = word_offsets
+                else:
+                    offsets = char_offsets
+                chunks = []
+                for item in offsets:
+                    start = item["start_offset"] * self.model.config.inputs_to_logits_ratio
+                    start /= self.feature_extractor.sampling_rate
 
-                chunks.append({"text": item[return_timestamps], "timestamp": (start, stop)})
-            optional["chunks"] = chunks
+                    stop = item["end_offset"] * self.model.config.inputs_to_logits_ratio
+                    stop /= self.feature_extractor.sampling_rate
 
-        extra = defaultdict(list)
-        for output in model_outputs:
-            output.pop("tokens", None)
-            output.pop("logits", None)
-            output.pop("is_last", None)
-            for k, v in output.items():
-                extra[k].append(v)
-        return {"text": text, **optional, **extra}
+                    chunks.append({"text": item[return_timestamps], "timestamp": (start, stop)})
+                optional["chunks"] = chunks
+
+            extra = defaultdict(list)
+            for output in model_outputs:
+                output.pop("tokens", None)
+                output.pop("logits", None)
+                output.pop("is_last", None)
+                for k, v in output.items():
+                    extra[k].append(v)
+            return {"text": text, **optional, **extra}

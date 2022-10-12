@@ -399,3 +399,21 @@ class WhisperTokenizer(PreTrainedTokenizer):
         if len(input_ids) > self.model_max_length:
             input_ids = input_ids[-self.model_max_length :]
         return input_ids
+
+    def _decode_chunked(self, model_outputs, return_timestamps=None):
+        """
+        This is internal for now.
+        All items
+
+        """
+        # This is the least brittle way to recover this special token id.
+        # if users are adding special tokens on top it's bound to create issues.
+        # Since all tokens > no_timestamps_token_id are supposed to be timestamps.
+        # TODO prevent users from creating new tokens ? Or figure out a way to
+        # keep this working.
+        # no_timestamps_token_id = self.convert_tokens_to_ids(["<|notimestamps|>"])[0]
+        # XXX Everything above this ID is to be understood as a timestamp, and they
+        # always go by pair.
+        import ipdb
+
+        ipdb.set_trace()

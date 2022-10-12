@@ -611,6 +611,7 @@ class WhisperEncoder(WhisperPreTrainedModel):
     def forward(
         self,
         input_features,
+        attention_mask=None,
         head_mask=None,
         output_attentions=None,
         output_hidden_states=None,
@@ -631,6 +632,8 @@ class WhisperEncoder(WhisperPreTrainedModel):
                 - 1 indicates the head is **not masked**,
                 - 0 indicates the head is **masked**.
 
+            attention_mask (`torch.LongTensor`, *optional*):
+                Not being actually used, enabled only to be backward compatible.
             output_attentions (`bool`, *optional*):
                 Whether or not to return the attentions tensors of all attention layers. See `attentions` under
                 returned tensors for more detail.

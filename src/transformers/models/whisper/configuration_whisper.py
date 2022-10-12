@@ -214,3 +214,11 @@ class WhisperConfig(PretrainedConfig):
             begin_suppress_tokens=begin_suppress_tokens,
             **kwargs,
         )
+
+    @property
+    def handles_chunking(self):
+        return True
+
+    @property
+    def inputs_to_logits_ratio(self):
+        return self.max_source_positions
