@@ -60,8 +60,8 @@ class ImageSegmentationPipeline(Pipeline):
             postprocess_kwargs["task"] = kwargs["task"]
         if "threshold" in kwargs:
             postprocess_kwargs["threshold"] = kwargs["threshold"]
-        if "overlap_mask_area_threshold" in kwargs:
-            postprocess_kwargs["overlap_mask_area_threshold"] = kwargs["overlap_mask_area_threshold"]
+        if "mask_threshold" in kwargs:
+            postprocess_kwargs["mask_threshold"] = kwargs["mask_threshold"]
         return {}, {}, postprocess_kwargs
 
     def __call__(self, images, **kwargs) -> Union[Predictions, List[Prediction]]:
@@ -83,7 +83,7 @@ class ImageSegmentationPipeline(Pipeline):
                 capabilities.
             threshold (`float`, *optional*, defaults to 0.9):
                 Probability threshold to filter out predicted masks.
-            overlap_mask_area_threshold (`float`, *optional*, defaults to 0.5):
+            mask_threshold (`float`, *optional*, defaults to 0.5):
                 Mask overlap threshold to eliminate small, disconnected segments.
 
         Return:
@@ -116,56 +116,37 @@ class ImageSegmentationPipeline(Pipeline):
         model_outputs["target_size"] = target_size
         return model_outputs
 
-    def postprocess(self, model_outputs, task="semantic", threshold=0.9, overlap_mask_area_threshold=0.5):
-        if task == "instance" and hasattr(self.feature_extractor, "post_process_instance_segmentation"):
-            outputs = self.feature_extractor.post_process_panoptic_segmentation(
-                model_outputs,
-                threshold=threshold,
-                overlap_mask_area_threshold=overlap_mask_area_threshold,
-                target_sizes=model_outputs["target_size"],
-            )[0]
-
-            annotation = []
-            segmentation = outputs["segmentation"]
-
-            if len(outputs["segments_info"]) == 0:
-                mask = Image.fromarray(np.zeros(segmentation.shape).astype(np.uint8), mode="L")
-                annotation.append({"mask": mask, "label": None, "score": 0.0})
-            else:
-                for segment in outputs["segments_info"]:
-                    mask = (segmentation == segment["id"]) * 255
-                    mask = Image.fromarray(mask.numpy().astype(np.uint8), mode="L")
-                    label = self.model.config.id2label[segment["label_id"]]
-                    score = segment["score"]
-                    annotation.append({"mask": mask, "label": label, "score": score})
-
+    def postprocess(self, model_outputs, task=None, threshold=0.9, mask_threshold=0.5):
+        semantic = False
+        if task == "instance" or hasattr(self.feature_extractor, "post_process_instance_segmentation"):
+            fn = self.feature_extractor.post_process_instance_segmentation
+            kwargs = {"threshold": threshold, "overlap_mask_area_threshold": mask_threshold}
         elif task == "panoptic" and hasattr(self.feature_extractor, "post_process_panoptic_segmentation"):
-            outputs = self.feature_extractor.post_process_panoptic_segmentation(
-                model_outputs,
-                threshold=threshold,
-                overlap_mask_area_threshold=overlap_mask_area_threshold,
-                target_sizes=model_outputs["target_size"],
-            )[0]
+            fn = self.feature_extractor.post_process_panoptic_segmentation
+            kwargs = {"threshold": threshold, "overlap_mask_area_threshold": mask_threshold}
+        elif task == "semantic" or hasattr(self.feature_extractor, "post_process_semantic_segmentation"):
+            fn = self.feature_extractor.post_process_semantic_segmentation
+            kwargs = {}
+            semantic = True
+        else:
+            if task is not None:
+                raise ValueError(f"task {task} is not supported for model {self.model}")
+            else:
+                raise ValueError("There was no suitable post_processing for this model, please report this bug.")
 
+        outputs = fn(model_outputs, target_sizes=model_outputs["target_size"], **kwargs)[0]
+
+        if not semantic:
             annotation = []
             segmentation = outputs["segmentation"]
 
-            if len(outputs["segments_info"]) == 0:
-                mask = Image.fromarray(np.zeros(segmentation.shape).astype(np.uint8), mode="L")
-                annotation.append({"mask": mask, "label": None, "score": 0.0})
-            else:
-                for segment in outputs["segments_info"]:
-                    mask = (segmentation == segment["id"]) * 255
-                    mask = Image.fromarray(mask.numpy().astype(np.uint8), mode="L")
-                    label = self.model.config.id2label[segment["label_id"]]
-                    score = segment["score"]
-                    annotation.append({"score": score, "label": label, "mask": mask})
-
-        elif task == "semantic" and hasattr(self.feature_extractor, "post_process_semantic_segmentation"):
-            outputs = self.feature_extractor.post_process_semantic_segmentation(
-                model_outputs, target_sizes=model_outputs["target_size"]
-            )[0]
-
+            for segment in outputs["segments_info"]:
+                mask = (segmentation == segment["id"]) * 255
+                mask = Image.fromarray(mask.numpy().astype(np.uint8), mode="L")
+                label = self.model.config.id2label[segment["label_id"]]
+                score = segment["score"]
+                annotation.append({"mask": mask, "label": label, "score": score})
+        else:
             annotation = []
             segmentation = outputs.numpy()
             labels = np.unique(segmentation)
@@ -175,6 +156,5 @@ class ImageSegmentationPipeline(Pipeline):
                 mask = Image.fromarray(mask.astype(np.uint8), mode="L")
                 label = self.model.config.id2label[label]
                 annotation.append({"score": None, "label": label, "mask": mask})
-        else:
-            raise ValueError(f"task {task} is not supported for model {self.model}")
+
         return annotation
