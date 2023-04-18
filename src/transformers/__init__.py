@@ -299,6 +299,7 @@ _import_structure = {
     "models.git": ["GIT_PRETRAINED_CONFIG_ARCHIVE_MAP", "GitConfig", "GitProcessor", "GitVisionConfig"],
     "models.glpn": ["GLPN_PRETRAINED_CONFIG_ARCHIVE_MAP", "GLPNConfig"],
     "models.gpt2": ["GPT2_PRETRAINED_CONFIG_ARCHIVE_MAP", "GPT2Config", "GPT2Tokenizer"],
+    "models.gpt2_lora": ["GPT2_LORA_PRETRAINED_CONFIG_ARCHIVE_MAP", "GPT2_LoRAConfig"],
     "models.gpt_bigcode": ["GPT_BIGCODE_PRETRAINED_CONFIG_ARCHIVE_MAP", "GPTBigCodeConfig"],
     "models.gpt_neo": ["GPT_NEO_PRETRAINED_CONFIG_ARCHIVE_MAP", "GPTNeoConfig"],
     "models.gpt_neox": ["GPT_NEOX_PRETRAINED_CONFIG_ARCHIVE_MAP", "GPTNeoXConfig"],
@@ -1649,6 +1650,18 @@ else:
             "GPT2Model",
             "GPT2PreTrainedModel",
             "load_tf_weights_in_gpt2",
+        ]
+    )
+    _import_structure["models.gpt2_lora"].extend(
+        [
+            "GPT2_LORA_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "GPT2_LoRADoubleHeadsModel",
+            "GPT2_LoRAForSequenceClassification",
+            "GPT2_LoRAForTokenClassification",
+            "GPT2_LoRALMHeadModel",
+            "GPT2_LoRAModel",
+            "GPT2_LoRAPreTrainedModel",
+            "load_tf_weights_in_gpt2_lora",
         ]
     )
     _import_structure["models.gpt_bigcode"].extend(
@@ -4004,6 +4017,7 @@ if TYPE_CHECKING:
     from .models.git import GIT_PRETRAINED_CONFIG_ARCHIVE_MAP, GitConfig, GitProcessor, GitVisionConfig
     from .models.glpn import GLPN_PRETRAINED_CONFIG_ARCHIVE_MAP, GLPNConfig
     from .models.gpt2 import GPT2_PRETRAINED_CONFIG_ARCHIVE_MAP, GPT2Config, GPT2Tokenizer
+    from .models.gpt2_lora import GPT2_LORA_PRETRAINED_CONFIG_ARCHIVE_MAP, GPT2_LoRAConfig
     from .models.gpt_bigcode import GPT_BIGCODE_PRETRAINED_CONFIG_ARCHIVE_MAP, GPTBigCodeConfig
     from .models.gpt_neo import GPT_NEO_PRETRAINED_CONFIG_ARCHIVE_MAP, GPTNeoConfig
     from .models.gpt_neox import GPT_NEOX_PRETRAINED_CONFIG_ARCHIVE_MAP, GPTNeoXConfig
@@ -5161,6 +5175,16 @@ if TYPE_CHECKING:
             GPT2Model,
             GPT2PreTrainedModel,
             load_tf_weights_in_gpt2,
+        )
+        from .models.gpt2_lora import (
+            GPT2_LORA_PRETRAINED_MODEL_ARCHIVE_LIST,
+            GPT2_LoRADoubleHeadsModel,
+            GPT2_LoRAForSequenceClassification,
+            GPT2_LoRAForTokenClassification,
+            GPT2_LoRALMHeadModel,
+            GPT2_LoRAModel,
+            GPT2_LoRAPreTrainedModel,
+            load_tf_weights_in_gpt2_lora,
         )
         from .models.gpt_bigcode import (
             GPT_BIGCODE_PRETRAINED_MODEL_ARCHIVE_LIST,
