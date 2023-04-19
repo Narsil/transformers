@@ -69,6 +69,8 @@ class Conv1D(nn.Module):
         self.lora_up_w = nn.Parameter(torch.empty(rank, nf))
         self.lora_up_b = nn.Parameter(torch.zeros(nf))
         nn.init.normal_(self.weight, std=0.02)
+        nn.init.normal_(self.lora_down_w, std=0.02)
+        nn.init.normal_(self.lora_up_w, std=0.02)
 
     def forward(self, x):
         size_out = x.size()[:-1] + (self.nf,)
@@ -723,10 +725,6 @@ class GPT2_LoRAModel(GPT2_LoRAPreTrainedModel):
             layer.mlp.c_fc.bias = first_layer.mlp.c_fc.bias
             layer.mlp.c_proj.weight = first_layer.mlp.c_proj.weight
             layer.mlp.c_proj.bias = first_layer.mlp.c_proj.bias
-
-        import ipdb
-
-        ipdb.set_trace()
 
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
