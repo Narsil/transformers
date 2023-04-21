@@ -59,13 +59,14 @@ class Conv1D(nn.Module):
         nx (`int`): The number of input features.
     """
 
-    def __init__(self, nf, nx, rank=10):
+    def __init__(self, nf, nx, rank):
         super().__init__()
         self.nf = nf
         self.weight = nn.Parameter(torch.empty(nx, nf))
         self.bias = nn.Parameter(torch.zeros(nf))
         self.lora_down_w = nn.Parameter(torch.empty(nx, rank))
         self.lora_down_b = nn.Parameter(torch.zeros(rank))
+        self.diag = nn.Parameter(torch.ones(nf))
         self.lora_up_w = nn.Parameter(torch.empty(rank, nf))
         self.lora_up_b = nn.Parameter(torch.zeros(nf))
         nn.init.normal_(self.weight, std=0.02)
@@ -78,6 +79,7 @@ class Conv1D(nn.Module):
         z = torch.addmm(self.bias, x, self.weight)
         y = torch.addmm(self.lora_down_b, x, self.lora_down_w)
         y = torch.addmm(self.lora_up_b, y, self.lora_up_w)
+        y = y * self.diag.unsqueeze(0)
         x = z + y
         x = x.view(size_out)
         return x
@@ -185,11 +187,11 @@ class GPT2_LoRAAttention(nn.Module):
         self.reorder_and_upcast_attn = config.reorder_and_upcast_attn
 
         if self.is_cross_attention:
-            self.c_attn = Conv1D(2 * self.embed_dim, self.embed_dim)
-            self.q_attn = Conv1D(self.embed_dim, self.embed_dim)
+            self.c_attn = Conv1D(2 * self.embed_dim, self.embed_dim, rank=config.lora_rank)
+            self.q_attn = Conv1D(self.embed_dim, self.embed_dim, rank=config.lora_rank)
         else:
-            self.c_attn = Conv1D(3 * self.embed_dim, self.embed_dim)
-        self.c_proj = Conv1D(self.embed_dim, self.embed_dim)
+            self.c_attn = Conv1D(3 * self.embed_dim, self.embed_dim, rank=config.lora_rank)
+        self.c_proj = Conv1D(self.embed_dim, self.embed_dim, rank=config.lora_rank)
 
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
@@ -378,8 +380,8 @@ class GPT2_LoRAMLP(nn.Module):
     def __init__(self, intermediate_size, config):
         super().__init__()
         embed_dim = config.hidden_size
-        self.c_fc = Conv1D(intermediate_size, embed_dim)
-        self.c_proj = Conv1D(embed_dim, intermediate_size)
+        self.c_fc = Conv1D(intermediate_size, embed_dim, rank=config.lora_rank)
+        self.c_proj = Conv1D(embed_dim, intermediate_size, rank=config.lora_rank)
         self.act = ACT2FN[config.activation_function]
         self.dropout = nn.Dropout(config.resid_pdrop)
 
